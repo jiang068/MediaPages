@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MediaPages</title>
+    <script src="./hls.js"></script>
+    <link rel="icon" type="image/png" href="./favicon.png" />
+    <style>
+        /* 基础重置 */
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; color: #ddd; font-family: sans-serif; overflow: hidden; }
+
+        /* 自定义字幕样式 - 优化位置防跳动 */
+        ::cue {
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            font-size: 1.2rem;
+            /* 核心修复：将字幕固定上移，避开原生控制条的高度，防止控制条隐藏时字幕掉落 */
+            transform: translateY(-55px);
+        }
+
+        /* 极简触发按钮 */
+        .menu-toggle-btn {
+            position: absolute; top: 20px; left: 20px; z-index: 200;
+            background: transparent; border: none; color: rgba(255, 255, 255, 0.8);
+            font-size: 16px; cursor: pointer; padding: 10px; outline: none;
+            text-shadow: 1px 1px 4px rgba(0,0,0,0.9); transition: opacity 0.5s ease, color 0.2s; opacity: 0;
+        }
+        .menu-toggle-btn:hover { color: #fff; }
+
+        /* 侧边栏主体 */
+        .sidebar {
+            position: absolute; top: 0; left: 0;
+            width: 280px; height: 100%;
+            background: rgba(26, 26, 26, 0.8);
+            -webkit-backdrop-filter: blur(10px);
+            border-right: 1px solid #333;
+            display: flex; flex-direction: column;
+            transform: translateX(-100%); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 101;
+        }
+        .sidebar.open { transform: translateX(0); }
+
+        /* 动态头部 */
+        .sidebar-header { padding: 25px 20px 20px 100px; font-size: 15px; font-weight: bold; border-bottom: 1px solid #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
+
+        /* 文件列表容器 */
+        .tree-container { flex: 1; overflow-y: auto; }
+
+        /* 返回上一级按钮 */
+        .back-btn {
+            padding: 12px 20px; background: #222; border-bottom: 1px solid #333;
+            cursor: pointer; font-size: 14px; color: #aaa; transition: background 0.2s; display: flex; align-items: center; gap: 8px;
+        }
+        .back-btn:hover { background: #333; color: #fff; }
+
+        /* 文件列表项 */
+        .file-list { list-style: none; padding: 0; margin: 0; }
+        .file-list li {
+            padding: 12px 20px 12px 25px; cursor: pointer; border-bottom: 1px solid #222;
+            font-size: 14px; transition: background 0.2s; display: flex; align-items: center; gap: 8px;
+            /* 防止长文件名换行导致排版错乱 */
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .file-list li:hover { background: #333; }
+        .file-list li.active { color: #00a1d6; background: rgba(0, 161, 214, 0.1); border-left: 3px solid #00a1d6; padding-left: 22px; }
+
+        /* 文件夹特殊样式 */
+        .folder-item { color: #ccc; }
+        .folder-item:hover { color: #fff; }
+
+        /* 侧边栏底部版权声明 */
+        .sidebar-footer {
+            padding: 15px;
+            text-align: center;
+            border-top: 1px solid #333;
+            font-size: 12px;
+        }
+        .sidebar-footer a {
+            color: #666;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        .sidebar-footer a:hover {
+            color: #aaa;
+        }
+
+        /* 主展示区 */
+        .main-content { width: 100%; height: 100%; position: relative; display: flex; justify-content: center; align-items: center; }
+        .media-viewer { width: 100%; height: 100%; display: none; object-fit: contain; outline: none; }
+        audio.media-viewer { width: 60%; height: 50px; }
+        .placeholder { color: #666; font-size: 16px; display: block; text-align: center; padding: 0 20px; }
+
+        /* ================= 新增：移动端适配 ================= */
+        @media (max-width: 768px) {
+            /* 移动端侧边栏加宽，避免点击困难 */
+            .sidebar {
+                width: 80%;
+                max-width: 320px;
+            }
+            /* 动态头部边距调整，适应按钮 */
+            .sidebar-header { padding: 20px 15px 15px 80px; }
+            /* 字幕字体在手机上稍微缩小 */
+            ::cue {
+                font-size: 1rem;
+                transform: translateY(-45px); /* 手机端控制条通常稍矮一点 */
+            }
+            /* 音频播放器撑满 */
+            audio.media-viewer { width: 90%; }
+            /* 菜单按钮稍微调小并适应触摸 */
+            .menu-toggle-btn {
+                top: 15px; left: 15px; font-size: 14px; padding: 8px;
+                background: rgba(0, 0, 0, 0.3); /* 移动端增加一点背景提高可见度 */
+                border-radius: 6px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <button class="menu-toggle-btn" id="menu-toggle-btn">☰ 媒体库</button>
+
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header" id="sidebar-header">媒体资产库</div>
+        <div class="tree-container" id="file-tree"></div>
+
+        <div class="sidebar-footer">
+            <a href="https://github.com/Chocola-X/MediaPages" target="_blank">Powered by MediaPages</a>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="placeholder" id="placeholder">请在左侧选择文件进行预览</div>
+        <video id="video-viewer" class="media-viewer" controls playsinline></video>
+        <audio id="audio-viewer" class="media-viewer" controls></audio>
+        <img id="image-viewer" class="media-viewer" alt="图片预览">
+    </div>
+
+    <script>
+        const fileTreeEl = document.getElementById('file-tree');
+        const sidebarHeader = document.getElementById('sidebar-header');
+        const placeholder = document.getElementById('placeholder');
+        const videoViewer = document.getElementById('video-viewer');
+        const audioViewer = document.getElementById('audio-viewer');
+        const imageViewer = document.getElementById('image-viewer');
+        const menuToggleBtn = document.getElementById('menu-toggle-btn');
+        const sidebar = document.getElementById('sidebar');
+
+        let hls;
+        let mouseHideTimeout;
+        let directoryStack = [];
+
+        // UI 交互逻辑
+        menuToggleBtn.addEventListener('click', () => {
+            sidebar.classList.toggle('open');
+            updateMenuButtonState();
+        });
+
+        function updateMenuButtonState() {
+            if (sidebar.classList.contains('open')) {
+                menuToggleBtn.innerText = '✕ 关闭';
+                menuToggleBtn.style.opacity = '1';
+                clearTimeout(mouseHideTimeout);
+            } else {
+                menuToggleBtn.innerText = '☰ 媒体库';
+                startHideTimer();
+            }
+        }
+
+        function startHideTimer() {
+            clearTimeout(mouseHideTimeout);
+            if (!sidebar.classList.contains('open')) {
+                mouseHideTimeout = setTimeout(() => { menuToggleBtn.style.opacity = '0'; }, 2500);
+            }
+        }
+
+        // 移动端触摸屏幕也能唤起按钮
+        document.addEventListener('mousemove', showButtonAndStartTimer);
+        document.addEventListener('touchstart', showButtonAndStartTimer, {passive: true});
+
+        function showButtonAndStartTimer() {
+            menuToggleBtn.style.opacity = '1';
+            startHideTimer();
+        }
+
+        startHideTimer();
+
+        // 核心渲染逻辑
+        function findDefaultMedia(items) {
+            for (let item of items) {
+                if (item.type === 'folder' && item.children) {
+                    const found = findDefaultMedia(item.children);
+                    if (found) return found;
+                } else if (item.isDefault === true) {
+                    return item;
+                }
+            }
+            return null;
+        }
+
+        async function fetchIndex() {
+            try {
+                const response = await fetch('./index.json');
+                const data = await response.json();
+
+                const defaultItem = findDefaultMedia(data);
+                if (defaultItem) {
+                    playMedia(defaultItem);
+                }
+
+                directoryStack = [{ name: "媒体资产库", children: data }];
+                renderCurrentDirectory();
+            } catch (error) {
+                console.error("加载文件索引失败:", error);
+                fileTreeEl.innerHTML = '<div style="padding:20px;color:red;">索引加载失败，请确保使用本地服务器运行</div>';
+            }
+        }
+
+        function renderCurrentDirectory() {
+            fileTreeEl.innerHTML = '';
+            const currentDir = directoryStack[directoryStack.length - 1];
+            sidebarHeader.innerText = currentDir.name;
+
+            if (directoryStack.length > 1) {
+                const backBtn = document.createElement('div');
+                backBtn.className = 'back-btn';
+                backBtn.innerHTML = '<span>⬅️</span> 返回上一级';
+                backBtn.onclick = () => {
+                    directoryStack.pop();
+                    renderCurrentDirectory();
+                };
+                fileTreeEl.appendChild(backBtn);
+            }
+
+            const ul = document.createElement('ul');
+            ul.className = 'file-list';
+
+            currentDir.children.forEach(item => {
+                const li = document.createElement('li');
+
+                if (item.type === 'folder') {
+                    li.className = 'folder-item';
+                    li.innerHTML = `<span>📁</span> ${item.name}`;
+                    li.onclick = () => {
+                        directoryStack.push(item);
+                        renderCurrentDirectory();
+                    };
+                } else {
+                    const icon = item.type === 'video' ? '🎬' : (item.type === 'audio' ? '🎵' : '🖼️');
+                    li.innerHTML = `<span>${icon}</span> ${item.name}`;
+                    li.title = item.name; // 添加 title 方便鼠标悬停查看完整长文件名
+
+                    li.onclick = () => {
+                        document.querySelectorAll('.file-list li').forEach(el => el.classList.remove('active'));
+                        li.classList.add('active');
+                        playMedia(item);
+
+                        // 移动端优化：点击播放后自动收起侧边栏
+                        if (window.innerWidth <= 768) {
+                            sidebar.classList.remove('open');
+                            updateMenuButtonState();
+                        }
+                    };
+                }
+                ul.appendChild(li);
+            });
+
+            fileTreeEl.appendChild(ul);
+        }
+
+        // 播放与字幕逻辑
+        function playMedia(item) {
+            const { type, src, subtitles } = item;
+
+            placeholder.style.display = 'none';
+            videoViewer.style.display = 'none';
+            audioViewer.style.display = 'none';
+            imageViewer.style.display = 'none';
+
+            videoViewer.pause();
+            audioViewer.pause();
+            if (hls) { hls.destroy(); hls = null; }
+
+            if (type === 'video') {
+                videoViewer.style.display = 'block';
+
+                videoViewer.querySelectorAll('track').forEach(t => t.remove());
+
+                if (subtitles && subtitles.length > 0) {
+                    subtitles.forEach(sub => {
+                        const track = document.createElement('track');
+                        track.kind = 'subtitles';
+                        track.label = sub.label;
+                        track.srclang = sub.srclang;
+                        track.src = sub.src;
+
+                        videoViewer.appendChild(track);
+
+                        if (sub.default) {
+                            track.track.mode = 'showing';
+                        }
+                    });
+                }
+
+                loadVideo(src);
+
+            } else if (type === 'audio') {
+                audioViewer.style.display = 'block';
+                audioViewer.src = src;
+                audioViewer.play().catch(e => console.log(e));
+            } else if (type === 'image') {
+                imageViewer.style.display = 'block';
+                imageViewer.src = src;
+            }
+        }
+
+        function loadVideo(src) {
+            if (Hls.isSupported() && src.endsWith('.m3u8')) {
+                hls = new Hls({
+                    maxBufferLength: 30,
+                    maxMaxBufferLength: 60
+                });
+                hls.loadSource(src);
+                hls.attachMedia(videoViewer);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    videoViewer.play().catch(e => console.log(e));
+                });
+            } else {
+                videoViewer.src = src;
+                videoViewer.play().catch(e => console.log(e));
+            }
+        }
+
+        fetchIndex();
+    </script>
+</body>
+</html>
