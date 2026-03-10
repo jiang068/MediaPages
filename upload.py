@@ -1,22 +1,9 @@
 import os
+import sys
 import shutil
 import subprocess
+import argparse
 from pathlib import Path
-
-# ================= 配置区域 =================
-# 需要执行的特定 Bash 命令
-BASH_COMMAND = "npx wrangler pages deploy ./onimai-anime --project-name onimai-anime"
-
-# 目标目录路径 (需要被清理的目录)
-TARGET_DIR = Path("/run/media/chocola/3T-DATA02/Projects/Pages/onimai-anime")
-
-# 缓存目录路径 (用于临时存放文件)
-CACHE_DIR = Path("/run/media/chocola/3T-DATA02/Projects/Pages/tmp")
-
-# 文件大小阈值 (单位: 字节) 例如 512MB
-THRESHOLD_BYTES = 512 * 1024 * 1024  # 512 MB
-# ===========================================
-
 
 def get_directory_size_and_files(directory: Path):
     """
@@ -75,25 +62,23 @@ def run_bash_command(cmd):
         return False
 
 
-def main():
-    target_dir = TARGET_DIR.resolve()
-    cache_dir = CACHE_DIR.resolve()
-
+def run_deploy(target_dir, cache_dir, bash_cmd, threshold):
+    """
+    接收外部传入的路径和参数执行部署逻辑
+    """
     print(f"目标目录: {target_dir}")
     print(f"缓存目录: {cache_dir}")
-    print(f"大小阈值: {THRESHOLD_BYTES / (1024**2):.2f} MB\n")
-
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    print(f"大小阈值: {threshold / (1024**2):.2f} MB\n")
 
     # 第一阶段：将所有超出阈值的文件搬到缓存
     print("--- 阶段一：清空目标目录 ---")
     initial_size, initial_files = get_directory_size_and_files(target_dir)
     print(f"初始目录总大小: {initial_size / (1024**2):.2f} MB")
 
-    if initial_size > THRESHOLD_BYTES:
+    if initial_size > threshold:
         files_to_move_initially = []
         size_moved = 0
-        min_size_to_free = initial_size - THRESHOLD_BYTES
+        min_size_to_free = initial_size - threshold
 
         print(f"需要释放至少 {min_size_to_free / (1024**2):.2f} MB 的空间")
 
@@ -110,16 +95,16 @@ def main():
         remaining_size_after_initial_move, _ = get_directory_size_and_files(target_dir)
         print(f"搬运后，目标目录剩余大小: {remaining_size_after_initial_move / (1024**2):.2f} MB")
 
-        # 执行第一次命令（此时目标目录已清理，只有少量残留文件）
+        # 执行第一次命令
         print("\n[步骤] 执行首次部署命令...")
-        success = run_bash_command(BASH_COMMAND)
+        success = run_bash_command(bash_cmd)
         if not success:
             print("[错误] 首次命令执行失败，程序终止。")
             return
     else:
         print("初始大小已满足阈值要求，无需搬运。")
         print("\n[步骤] 执行初始部署命令...")
-        success = run_bash_command(BASH_COMMAND)
+        success = run_bash_command(bash_cmd)
         if not success:
             print("[错误] 初始命令执行失败，程序终止。")
             return
@@ -141,11 +126,10 @@ def main():
         files_to_return = []
         size_to_return = 0
         for rel_path, size, full_path in cached_files:
-            if size_to_return + size <= THRESHOLD_BYTES:
+            if size_to_return + size <= threshold:
                 files_to_return.append((rel_path, size, full_path))
                 size_to_return += size
             else:
-                # 如果第一个文件就超了阈值，我们仍需移动它，否则会卡住
                 if len(files_to_return) == 0:
                     print(f"  -> 警告: 单个文件超过阈值，但仍将其取出。")
                     files_to_return.append((rel_path, size, full_path))
@@ -157,23 +141,49 @@ def main():
 
         # 执行命令
         print(f"  -> 执行部署命令...")
-        success = run_bash_command(BASH_COMMAND)
+        success = run_bash_command(bash_cmd)
         if not success:
             print("[错误] 命令执行失败，程序终止。")
             return
 
-        # 关键区别：执行完命令后，文件就留在目标目录了，不需要再移回去！
-
     # 第三阶段：当缓存为空时，执行最终命令
     print("\n--- 阶段三：完成任务 ---")
     print("\n[最终步骤] 执行最终部署命令，此时所有文件都已回到目标目录。")
-    success = run_bash_command(BASH_COMMAND)
+    success = run_bash_command(bash_cmd)
     if not success:
         print("[错误] 最终命令执行失败。")
         return
 
     print("\n任务完成！所有文件已处理并完成最终部署。")
 
+def main():
+    parser = argparse.ArgumentParser(description="Cloudflare Pages 分批上传部署工具")
+    parser.add_argument("-t", "--target", required=True, help="目标文件夹目录 (需要部署的内容所在路径)")
+    parser.add_argument("-c", "--cache", required=True, help="缓存文件夹目录 (用于上传过程中的中转存放)")
+    parser.add_argument("-p", "--project", required=True, help="远端 Cloudflare Pages 项目名称")
+    parser.add_argument("--threshold", type=int, default=512, help="单次上传阈值(MB)，默认 512")
 
+    args = parser.parse_args()
+
+    target_dir = Path(args.target).resolve()
+    cache_dir = Path(args.cache).resolve()
+
+    if not target_dir.exists():
+        print(f"[错误] 目标目录不存在: {target_dir}")
+        sys.exit(1)
+
+    # 确保缓存目录存在
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    # 动态拼接 wrangler 部署命令
+    bash_cmd = f"npx wrangler pages deploy {target_dir} --project-name {args.project}"
+    threshold_bytes = args.threshold * 1024 * 1024
+
+    print(f"--- 启动独立部署脚本 ---")
+    print(f"远端项目: {args.project}")
+
+    run_deploy(target_dir, cache_dir, bash_cmd, threshold_bytes)
+
+# 保持作为独立脚本运行的能力
 if __name__ == "__main__":
     main()
