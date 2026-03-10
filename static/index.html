@@ -31,7 +31,11 @@
         /* 侧边栏主体 */
         .sidebar {
             position: absolute; top: 0; left: 0;
-            width: 280px; height: 100%;
+            /* 核心修改点 1：自适应宽度配置 */
+            min-width: 280px;         /* 保持现有最小宽度 */
+            width: fit-content;       /* 根据文件名长度自动拉伸 */
+            max-width: 90vw;          /* 设置最大宽度为屏幕宽度的90%，防止占满全屏 */
+            height: 100%;
             background: rgba(26, 26, 26, 0.8);
             -webkit-backdrop-filter: blur(10px);
             border-right: 1px solid #333;
@@ -42,10 +46,18 @@
         .sidebar.open { transform: translateX(0); }
 
         /* 动态头部 */
-        .sidebar-header { padding: 25px 20px 20px 100px; font-size: 15px; font-weight: bold; border-bottom: 1px solid #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
+        .sidebar-header {
+            padding: 25px 20px 20px 100px;
+            font-size: 15px;
+            font-weight: bold;
+            border-bottom: 1px solid #333;
+            /* 核心修改点 2：允许头部目录名换行 */
+            white-space: normal;
+            word-break: break-all;
+        }
 
         /* 文件列表容器 */
-        .tree-container { flex: 1; overflow-y: auto; }
+        .tree-container { flex: 1; overflow-y: auto; overflow-x: hidden; }
 
         /* 返回上一级按钮 */
         .back-btn {
@@ -58,10 +70,22 @@
         .file-list { list-style: none; padding: 0; margin: 0; }
         .file-list li {
             padding: 12px 20px 12px 25px; cursor: pointer; border-bottom: 1px solid #222;
-            font-size: 14px; transition: background 0.2s; display: flex; align-items: center; gap: 8px;
-            /* 防止长文件名换行导致排版错乱 */
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            font-size: 14px; transition: background 0.2s; display: flex;
+            /* 修改为顶部对齐，以便换行时图标与第一行文字对齐 */
+            align-items: flex-start;
+            gap: 8px;
+            /* 核心修改点 3：允许文件名换行 */
+            white-space: normal;
+            word-break: break-all;
+            line-height: 1.4;
         }
+
+        /* 核心修改点 4：防止图标在文字换行时被 flex 压缩 */
+        .file-list li span, .back-btn span {
+            flex-shrink: 0;
+            margin-top: 1px; /* 微调多行状态下图标与文字的视觉居中 */
+        }
+
         .file-list li:hover { background: #333; }
         .file-list li.active { color: #00a1d6; background: rgba(0, 161, 214, 0.1); border-left: 3px solid #00a1d6; padding-left: 22px; }
 
@@ -93,10 +117,11 @@
 
         /* ================= 新增：移动端适配 ================= */
         @media (max-width: 768px) {
-            /* 移动端侧边栏加宽，避免点击困难 */
             .sidebar {
-                width: 80%;
-                max-width: 320px;
+                /* 核心修改点 5：移动端同样保持自适应逻辑 */
+                min-width: 80vw;
+                width: fit-content;
+                max-width: 90vw;
             }
             /* 动态头部边距调整，适应按钮 */
             .sidebar-header { padding: 20px 15px 15px 80px; }
