@@ -124,23 +124,19 @@ def compress_audio(input_path, output_path):
             os.remove(temp_output)
 
 def convert_video_to_mp4(input_path, output_path):
-    logging.info(f"Converting video to MP4: {input_path}")
-    output_path = os.path.splitext(output_path)[0] + '.mp4'
+    """用于处理小于 MAX_SIZE 的视频，仅进行标准 MP4 转码以确保浏览器兼容性"""
+    logging.info(f"Standardizing small video to MP4: {input_path}")
+    target_output = os.path.splitext(output_path)[0] + '.mp4'
 
     hw_cmd = [
-        'ffmpeg', '-y',
-        '-hwaccel', 'cuda',
-        '-hwaccel_output_format', 'cuda',
+        'ffmpeg', '-y', '-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda',
         '-i', input_path,
         '-vf', 'scale_cuda=format=nv12',
-        '-c:v', 'h264_nvenc',
-        '-preset', 'p6',
-        '-tune', 'hq',
-        '-profile:v', 'high',
-        '-cq', '22',
-        '-c:a', 'aac', '-b:a', '192k',
+        '-c:v', 'h264_nvenc', '-preset', 'p6', '-tune', 'hq',
+        '-profile:v', 'high', '-cq', '22',
+        '-c:a', 'aac', '-b:a', '320k',
         '-movflags', '+faststart',
-        output_path
+        target_output
     ]
 
     try:
@@ -148,92 +144,86 @@ def convert_video_to_mp4(input_path, output_path):
         return True
     except subprocess.CalledProcessError:
         sw_cmd = [
-            'ffmpeg', '-y',
-            '-i', input_path,
-            '-c:v', 'libx264',
-            '-preset', 'slow',
-            '-crf', '22',
+            'ffmpeg', '-y', '-i', input_path,
+            '-c:v', 'libx264', '-preset', 'slow', '-crf', '22',
             '-pix_fmt', 'yuv420p',
-            '-c:a', 'aac', '-b:a', '192k',
+            '-c:a', 'aac', '-b:a', '320k',
             '-movflags', '+faststart',
-            output_path
+            target_output
         ]
         try:
             subprocess.run(sw_cmd, check=True, stderr=subprocess.DEVNULL)
             return True
         except Exception as e:
-            if os.path.exists(output_path):
-                os.remove(output_path)
+            logging.error(f"Failed to convert {input_path}: {e}")
+            if os.path.exists(target_output): os.remove(target_output)
             return False
 
 def compress_video(input_path, output_dir):
+    """采用 HLS 切片方式处理视频，支持全格式和 CUDA 硬件加速"""
     input_dir_path = os.path.dirname(input_path)
     base_name = os.path.splitext(os.path.basename(input_path))[0]
 
     video_folder = os.path.join(output_dir, base_name)
     os.makedirs(video_folder, exist_ok=True)
-    logging.info(f"Starting HLS video processing for: {input_path}")
+    logging.info(f"Starting high-performance HLS processing: {input_path}")
 
     output_playlist = os.path.join(video_folder, f"{base_name}-0.m3u8")
     hls_segments = os.path.join(video_folder, "chunk_%04d.ts")
 
+    # 基于用户提供的高性能 CUDA 优化参数
     hw_cmd = [
         'ffmpeg', '-y', '-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda',
         '-i', input_path,
         '-map', '0:v:0', '-map', '0:a:0',
         '-vf', 'scale_cuda=format=nv12',
-        '-c:v', 'h264_nvenc', '-preset', 'p6', '-tune', 'hq',
-        '-profile:v', 'high', '-level:v', '4.2',
-        '-rc', 'vbr', '-cq', '22', '-b:v', '0', '-maxrate', '8M', '-bufsize', '16M',
-        '-g', '90', '-keyint_min', '90', '-sc_threshold', '0',
-        '-c:a', 'aac', '-b:a', '192k',
-        '-hls_time', '6', '-hls_playlist_type', 'vod',
+        '-c:v', 'h264_nvenc',
+        '-preset', 'p6',
+        '-profile:v', 'high', '-level:v', '5.2',
+        '-rc', 'vbr', '-b:v', '18M', '-maxrate', '24M', '-bufsize', '36M',
+        '-g', '180', '-keyint_min', '180', '-sc_threshold', '0',
+        '-c:a', 'aac', '-b:a', '320k',
+        '-hls_time', '3', '-hls_playlist_type', 'vod',
         '-hls_segment_filename', hls_segments,
         output_playlist
     ]
 
     try:
         subprocess.run(hw_cmd, check=True, stderr=subprocess.DEVNULL)
-    except:
+    except Exception as e:
+        logging.warning(f"CUDA failed, falling back to CPU for {base_name}. Error: {e}")
         sw_cmd = [
             'ffmpeg', '-y', '-i', input_path,
             '-map', '0:v:0', '-map', '0:a:0',
             '-vf', 'scale=format=yuv420p',
-            '-c:v', 'libx264', '-preset', 'medium', '-tune', 'film',
-            '-profile:v', 'high', '-level', '4.2',
-            '-rc', 'vbr', '-crf', '22', '-b:v', '0', '-maxrate', '8M', '-bufsize', '16M',
-            '-g', '90', '-keyint_min', '90', '-sc_threshold', '0',
-            '-c:a', 'aac', '-b:a', '192k',
-            '-hls_time', '6', '-hls_playlist_type', 'vod',
+            '-c:v', 'libx264', '-preset', 'medium', '-crf', '20',
+            '-g', '180', '-keyint_min', '180', '-sc_threshold', '0',
+            '-c:a', 'aac', '-b:a', '320k',
+            '-hls_time', '3', '-hls_playlist_type', 'vod',
             '-hls_segment_filename', hls_segments,
             output_playlist
         ]
         subprocess.run(sw_cmd, check=True, stderr=subprocess.DEVNULL)
 
-    # ---------------- 智能字幕处理部分 ----------------
+    # 智能字幕处理 (保持原逻辑不变)
+    process_subtitles(input_dir_path, base_name, video_folder, input_path)
+
+def process_subtitles(input_dir_path, base_name, video_folder, input_video_path):
+    """提取并转换关联字幕"""
     try:
         source_items = os.listdir(input_dir_path)
         for item in source_items:
-            # 找到和视频同名开头，且属于字幕格式的文件
             if item.startswith(base_name) and item.lower().endswith(tuple(SUBTITLE_EXTENSIONS)):
-                if item == os.path.basename(input_path):
-                    continue
+                if item == os.path.basename(input_video_path): continue
 
                 subtitle_file = os.path.join(input_dir_path, item)
-
-                # 提取文件的后缀部分作为字幕名 (例如 .JPSC.ass -> JPSC)
                 sub_name_without_ext = os.path.splitext(item)[0]
-                suffix = sub_name_without_ext[len(base_name):]
-                # 利用正则抹掉开头的标点符号（如点或下划线）
-                suffix = re.sub(r'^[\.\-\_]+', '', suffix)
-                if not suffix:
-                    suffix = "Default"
+                suffix = re.sub(r'^[\.\-\_]+', '', sub_name_without_ext[len(base_name):])
+                if not suffix: suffix = "Default"
 
-                # 拼接最终转换出来的 vtt 文件名
                 vtt_filename = f"{base_name}_{suffix}.vtt"
                 vtt_path = os.path.join(video_folder, vtt_filename)
 
-                # 处理 ASS 格式，动态滤除日语双语行
                 if item.lower().endswith('.ass'):
                     filtered_subtitle = os.path.join(video_folder, f"temp_{suffix}.ass")
                     try:
@@ -245,22 +235,17 @@ def compress_video(input_path, output_dir):
                                     parts = line.split(',', 9)
                                     if len(parts) >= 4:
                                         style_lower = parts[3].lower()
-                                        # 将样式名中的非字母/数字替换为空格，提取出独立的单词
                                         words = re.sub(r'[^a-z0-9]', ' ', style_lower).split()
-                                        # 智能识别常见的日文字幕样式并丢弃 (过滤独立词汇 jp/jpn 或含有日/romaji 的轨道)
-                                        if 'jp' in words or 'jpn' in words or '日' in style_lower or 'romaji' in style_lower:
+                                        if any(x in words for x in ['jp', 'jpn']) or '日' in style_lower or 'romaji' in style_lower:
                                             continue
                                 f_out.write(line)
-                        # 将过滤好日文的 ass 转换为 vtt
                         subprocess.run(['ffmpeg', '-y', '-i', filtered_subtitle, vtt_path], check=True, stderr=subprocess.DEVNULL)
                     finally:
-                        if os.path.exists(filtered_subtitle):
-                            os.remove(filtered_subtitle)
+                        if os.path.exists(filtered_subtitle): os.remove(filtered_subtitle)
                 else:
-                    # 如果是 SRT 或已经是 VTT，直接转换过去
                     subprocess.run(['ffmpeg', '-y', '-i', subtitle_file, vtt_path], check=True, stderr=subprocess.DEVNULL)
     except Exception as e:
-        logging.error(f"Error processing subtitles for {base_name}: {e}")
+        logging.error(f"Subtitle error for {base_name}: {e}")
 
 def build_index_tree(dir_path, output_root):
     children = []
@@ -287,155 +272,112 @@ def build_index_tree(dir_path, output_root):
 
                 subtitles = []
                 vtt_files = [f for f in folder_items if f.lower().endswith('.vtt')]
-                base_name = item # 文件夹名即为视频源文件名
+                base_name = item
 
                 for vtt in vtt_files:
                     vtt_name_no_ext = os.path.splitext(vtt)[0]
-                    # 解析在 compress_video 里拼上去的 _后缀
-                    if vtt_name_no_ext.startswith(base_name + "_"):
-                        suffix = vtt_name_no_ext[len(base_name)+1:]
-                    else:
-                        suffix = vtt_name_no_ext
-
-                    label = suffix  # 直接把截取到的字符串（例如 JPSC）作为前端显示的标签
+                    suffix = vtt_name_no_ext[len(base_name)+1:] if vtt_name_no_ext.startswith(base_name + "_") else vtt_name_no_ext
+                    label = suffix
                     suffix_lower = suffix.lower()
 
-                    # 为了兼容播放器，智能推断 srclang 和 是否设为默认轨道
-                    if 'sc' in suffix_lower or 'chs' in suffix_lower or 'zh' in suffix_lower:
+                    if any(x in suffix_lower for x in ['sc', 'chs', 'zh']):
                         srclang, default = "zh", True
-                    elif 'tc' in suffix_lower or 'cht' in suffix_lower or 'hant' in suffix_lower:
+                    elif any(x in suffix_lower for x in ['tc', 'cht', 'hant']):
                         srclang, default = "zh-Hant", False
                     else:
                         srclang, default = "und", False
 
                     vtt_rel = os.path.relpath(os.path.join(full_path, vtt), output_root).replace('\\', '/')
                     subtitles.append({
-                        "label": label,
-                        "srclang": srclang,
-                        "src": f"./{vtt_rel}",
-                        "default": default
+                        "label": label, "srclang": srclang, "src": f"./{vtt_rel}", "default": default
                     })
 
-                video_node = {
-                    "name": item,
-                    "type": "video",
-                    "src": f"./{m3u8_rel}"
-                }
-                if subtitles:
-                    video_node["subtitles"] = subtitles
-
+                video_node = {"name": item, "type": "video", "src": f"./{m3u8_rel}"}
+                if subtitles: video_node["subtitles"] = subtitles
                 children.append(video_node)
             else:
                 folder_children = build_index_tree(full_path, output_root)
                 if folder_children:
-                    children.append({
-                        "name": item,
-                        "type": "folder",
-                        "children": folder_children
-                    })
+                    children.append({"name": item, "type": "folder", "children": folder_children})
         else:
             ext = os.path.splitext(item)[1].lower()
-            if item == 'index.json':
-                continue
-
+            if item == 'index.json': continue
             if ext in AUDIO_EXTENSIONS:
                 children.append({"name": item, "type": "audio", "src": web_src})
             elif ext in IMAGE_EXTENSIONS:
                 children.append({"name": item, "type": "image", "src": web_src})
             elif ext in VIDEO_EXTENSIONS:
+                # 注意：如果已经被 HLS 处理，它将作为文件夹存在，这里处理的是未被转码的小视频
                 children.append({"name": item, "type": "video", "src": web_src})
 
     return children
 
 def generate_index(output_dir, set_default=True):
-    logging.info("Generating nested JSON index for frontend...")
+    logging.info("Generating nested JSON index...")
     root_nodes = build_index_tree(output_dir, output_dir)
-
     if set_default:
         for node in root_nodes:
             if node.get("type") == "video":
                 node["isDefault"] = True
-                logging.info(f"Set default media to: {node['name']}")
                 break
-
     index_path = os.path.join(output_dir, 'index.json')
     with open(index_path, 'w', encoding='utf-8') as f:
         json.dump(root_nodes, f, indent=2, ensure_ascii=False)
-    logging.info(f"Index successfully generated at: {index_path}")
 
 def main():
-    parser = argparse.ArgumentParser(description='Media file processing tool')
+    parser = argparse.ArgumentParser(description='Universal Media Processing Tool')
     parser.add_argument('input_dir', help='Input directory path')
     parser.add_argument('output_dir', help='Output directory path')
-    parser.add_argument('--no-default', action='store_true', help='Disable automatically setting the first video in root as default')
+    parser.add_argument('--no-default', action='store_true')
     args = parser.parse_args()
 
-    logging.info(f"--- Media Processing Tool Started ---")
     os.makedirs(args.output_dir, exist_ok=True)
+    logging.info("--- Media Processing Tool Started ---")
 
-    total_files = 0
-    processed_files = 0
     for root, _, files in os.walk(args.input_dir):
         rel_path = os.path.relpath(root, args.input_dir)
         out_root = os.path.join(args.output_dir, rel_path)
         os.makedirs(out_root, exist_ok=True)
 
         for file in files:
-            total_files += 1
             input_path = os.path.join(root, file)
             output_path = os.path.join(out_root, file)
             ext = os.path.splitext(file)[1].lower()
-
-            if os.path.exists(output_path) or (ext == '.mkv' and os.path.exists(os.path.splitext(output_path)[0] + '.mp4')):
-                continue
-
             file_size = os.path.getsize(input_path)
 
-            if file_size <= MAX_SIZE and ext != '.mkv' and ext not in AUDIO_EXTENSIONS:
-                # 提前拦截：如果是较小的常规文件，且是 ass 字幕，则跳过拷贝
-                if ext == '.ass':
-                    processed_files += 1
+            # 检查是否已处理过 (MP4 转换或 HLS 文件夹)
+            if ext in VIDEO_EXTENSIONS:
+                base_name = os.path.splitext(file)[0]
+                if os.path.exists(os.path.join(out_root, base_name, f"{base_name}-0.m3u8")):
                     continue
-                shutil.copy2(input_path, output_path)
-                processed_files += 1
-                continue
 
+            # --- 核心处理逻辑 ---
             if ext in IMAGE_EXTENSIONS:
-                compress_image(input_path, output_path)
-                processed_files += 1
-            elif ext in AUDIO_EXTENSIONS:
-                if file_size <= MAX_SIZE:
-                    shutil.copy2(input_path, output_path)
-                else:
-                    compress_audio(input_path, output_path)
-                processed_files += 1
-            elif ext in VIDEO_EXTENSIONS:
-                if ext == '.mkv':
-                    if file_size <= MAX_SIZE:
-                        convert_video_to_mp4(input_path, output_path)
-                    else:
-                        compress_video(input_path, out_root)
-                    processed_files += 1
-                else:
-                    shutil.copy2(input_path, output_path)
-                    processed_files += 1
-            elif ext in SUBTITLE_EXTENSIONS:
-                # 拦截点：如果是大于 MAX_SIZE 分支里的字幕，绝不复制原版 ass 过去
-                if ext != '.ass':
-                    shutil.copy2(input_path, output_path)
-                processed_files += 1
+                if file_size <= MAX_SIZE: shutil.copy2(input_path, output_path)
+                else: compress_image(input_path, output_path)
 
-    # ---------------- 清理阶段：彻底抹除输出目录残留的 ass 文件 ----------------
-    logging.info("Cleaning up any remaining .ass files in output directory...")
+            elif ext in AUDIO_EXTENSIONS:
+                if file_size <= MAX_SIZE: shutil.copy2(input_path, output_path)
+                else: compress_audio(input_path, output_path)
+
+            elif ext in VIDEO_EXTENSIONS:
+                # 无论 MKV 还是 MP4，大于 MAX_SIZE 都进行 HLS 高性能切片
+                if file_size > MAX_SIZE:
+                    compress_video(input_path, out_root)
+                else:
+                    # 小视频统一转成兼容性好的 MP4
+                    convert_video_to_mp4(input_path, output_path)
+
+            elif ext in SUBTITLE_EXTENSIONS:
+                if ext != '.ass': # .ass 由 compress_video 内部处理，此处仅复制 srt/vtt
+                    shutil.copy2(input_path, output_path)
+
+    # 清理残留 ass
     for root_dir, _, out_files in os.walk(args.output_dir):
         for f in out_files:
             if f.lower().endswith('.ass'):
-                ass_path = os.path.join(root_dir, f)
-                try:
-                    os.remove(ass_path)
-                    logging.info(f"Removed redundant subtitle: {ass_path}")
-                except Exception as e:
-                    logging.error(f"Failed to remove {ass_path}: {e}")
+                try: os.remove(os.path.join(root_dir, f))
+                except: pass
 
     generate_index(args.output_dir, set_default=not args.no_default)
     logging.info("--- Processing Complete ---")
