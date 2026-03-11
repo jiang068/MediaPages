@@ -1,5 +1,4 @@
 import os
-import sys
 import shutil
 import subprocess
 import argparse
@@ -62,52 +61,62 @@ def run_bash_command(cmd):
         return False
 
 
-def run_deploy(target_dir, cache_dir, bash_cmd, threshold):
+def run_deploy(target_dir, cache_dir, bash_cmd, threshold, resume=False):
     """
     接收外部传入的路径和参数执行部署逻辑
     """
     print(f"目标目录: {target_dir}")
     print(f"缓存目录: {cache_dir}")
-    print(f"大小阈值: {threshold / (1024**2):.2f} MB\n")
+    print(f"大小阈值: {threshold / (1024**2):.2f} MB")
+    print(f"断点续传: {'开启' if resume else '关闭'}\n")
 
-    # 第一阶段：将所有超出阈值的文件搬到缓存
-    print("--- 阶段一：清空目标目录 ---")
-    initial_size, initial_files = get_directory_size_and_files(target_dir)
-    print(f"初始目录总大小: {initial_size / (1024**2):.2f} MB")
-
-    if initial_size > threshold:
-        files_to_move_initially = []
-        size_moved = 0
-        min_size_to_free = initial_size - threshold
-
-        print(f"需要释放至少 {min_size_to_free / (1024**2):.2f} MB 的空间")
-
-        for rel_path, size, full_path in initial_files:
-            if size_moved < min_size_to_free:
-                files_to_move_initially.append((rel_path, size, full_path))
-                size_moved += size
-            else:
-                break
-
-        print(f"准备搬运 {len(files_to_move_initially)} 个文件到缓存")
-        move_files_with_structure(files_to_move_initially, target_dir, cache_dir)
-
-        remaining_size_after_initial_move, _ = get_directory_size_and_files(target_dir)
-        print(f"搬运后，目标目录剩余大小: {remaining_size_after_initial_move / (1024**2):.2f} MB")
-
-        # 执行第一次命令
-        print("\n[步骤] 执行首次部署命令...")
+    if resume:
+        # 断点续传模式：直接对目标文件夹当前的内容重试部署，跳过清空阶段
+        print("--- 恢复模式：尝试重新部署当前目标目录中的文件 ---")
         success = run_bash_command(bash_cmd)
         if not success:
-            print("[错误] 首次命令执行失败，程序终止。")
+            print("[错误] 恢复模式下部署重试失败，程序终止。请检查网络或重新运行。")
             return
+        print("  -> 恢复部署成功，直接进入阶段二，继续从缓存搬运文件...")
     else:
-        print("初始大小已满足阈值要求，无需搬运。")
-        print("\n[步骤] 执行初始部署命令...")
-        success = run_bash_command(bash_cmd)
-        if not success:
-            print("[错误] 初始命令执行失败，程序终止。")
-            return
+        # 第一阶段：正常模式，将所有超出阈值的文件搬到缓存
+        print("--- 阶段一：清空目标目录 ---")
+        initial_size, initial_files = get_directory_size_and_files(target_dir)
+        print(f"初始目录总大小: {initial_size / (1024**2):.2f} MB")
+
+        if initial_size > threshold:
+            files_to_move_initially = []
+            size_moved = 0
+            min_size_to_free = initial_size - threshold
+
+            print(f"需要释放至少 {min_size_to_free / (1024**2):.2f} MB 的空间")
+
+            for rel_path, size, full_path in initial_files:
+                if size_moved < min_size_to_free:
+                    files_to_move_initially.append((rel_path, size, full_path))
+                    size_moved += size
+                else:
+                    break
+
+            print(f"准备搬运 {len(files_to_move_initially)} 个文件到缓存")
+            move_files_with_structure(files_to_move_initially, target_dir, cache_dir)
+
+            remaining_size_after_initial_move, _ = get_directory_size_and_files(target_dir)
+            print(f"搬运后，目标目录剩余大小: {remaining_size_after_initial_move / (1024**2):.2f} MB")
+
+            # 执行第一次命令
+            print("\n[步骤] 执行首次部署命令...")
+            success = run_bash_command(bash_cmd)
+            if not success:
+                print("[错误] 首次命令执行失败，程序终止。")
+                return
+        else:
+            print("初始大小已满足阈值要求，无需搬运。")
+            print("\n[步骤] 执行初始部署命令...")
+            success = run_bash_command(bash_cmd)
+            if not success:
+                print("[错误] 初始命令执行失败，程序终止。")
+                return
 
     # 第二阶段：从缓存分批取回文件并执行命令
     print("\n--- 阶段二：从缓存取回文件并部署 ---")
@@ -143,7 +152,7 @@ def run_deploy(target_dir, cache_dir, bash_cmd, threshold):
         print(f"  -> 执行部署命令...")
         success = run_bash_command(bash_cmd)
         if not success:
-            print("[错误] 命令执行失败，程序终止。")
+            print("[错误] 命令执行失败，程序终止。如果是因为网络波动，可以加上 -r 参数重新运行来续传。")
             return
 
     # 第三阶段：当缓存为空时，执行最终命令
@@ -156,12 +165,16 @@ def run_deploy(target_dir, cache_dir, bash_cmd, threshold):
 
     print("\n任务完成！所有文件已处理并完成最终部署。")
 
+
 def main():
     parser = argparse.ArgumentParser(description="Cloudflare Pages 分批上传部署工具")
     parser.add_argument("-t", "--target", required=True, help="目标文件夹目录 (需要部署的内容所在路径)")
     parser.add_argument("-c", "--cache", required=True, help="缓存文件夹目录 (用于上传过程中的中转存放)")
     parser.add_argument("-p", "--project", required=True, help="远端 Cloudflare Pages 项目名称")
     parser.add_argument("--threshold", type=int, default=512, help="单次上传阈值(MB)，默认 512")
+
+    # 新增的断点续传参数
+    parser.add_argument("-r", "--resume", action="store_true", help="启用断点续传：优先上传当前目标文件夹内剩余的文件，再继续从缓存搬运")
 
     args = parser.parse_args()
 
@@ -182,8 +195,8 @@ def main():
     print(f"--- 启动独立部署脚本 ---")
     print(f"远端项目: {args.project}")
 
-    run_deploy(target_dir, cache_dir, bash_cmd, threshold_bytes)
+    run_deploy(target_dir, cache_dir, bash_cmd, threshold_bytes, resume=args.resume)
 
-# 保持作为独立脚本运行的能力
+
 if __name__ == "__main__":
     main()
