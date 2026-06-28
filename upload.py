@@ -50,14 +50,11 @@ def run_bash_command(cmd):
     print(f"\n[执行命令] {cmd}")
     print("  -> 命令开始执行...")
     try:
-        result = subprocess.run(cmd, shell=True, check=True, text=True, capture_output=True)
+        result = subprocess.run(cmd, shell=True, check=True, text=True)
         print("  -> 命令执行完毕。")
-        print("[命令输出]:", result.stdout.strip())
         return True
     except subprocess.CalledProcessError as e:
         print(f"[命令失败]: {e}")
-        if e.stderr:
-            print("[错误信息]:", e.stderr.strip())
         return False
 
 

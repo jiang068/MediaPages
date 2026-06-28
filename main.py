@@ -1,8 +1,11 @@
 import argparse
+import json
 import os
 import subprocess
 import sys
 import shutil
+import urllib.request
+import urllib.error
 from pathlib import Path
 
 # 导入同目录下的 upload 模块
@@ -66,6 +69,17 @@ def apply_site_config(dist_dir, title_override):
 
     with open(index_html_path, "w", encoding="utf-8") as f:
         f.write(html)
+
+    # 鉴权：如果启用了密码，注入 auth 脚本
+    auth = config.generate_auth(dist_dir)
+    if auth["enabled"]:
+        with open(index_html_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        html = html.replace("<body>", f"<body>\n{auth['script_before']}")
+        html = html.replace("</body>", f"\n{auth['script_after']}\n</body>")
+        with open(index_html_path, "w", encoding="utf-8") as f:
+            f.write(html)
+        print("✅ 网页密码鉴权已启用")
 
 
 def export_cloudflare_credentials():
@@ -155,20 +169,39 @@ def main():
     export_cloudflare_credentials()
 
     print("\n" + "="*50)
-    print(f"🚀 第二阶段：创建远端仓库 [{args.project_name}]")
+    print(f"🚀 第二阶段：创建远端仓库 [{project_name}]")
     print("="*50)
 
-    # 创建 Cloudflare Pages 项目
-    create_cmd = f"npx wrangler pages project create {args.project_name} --production-branch main"
-    run_shell_command(create_cmd, ignore_error=True)
+    # 通过 Cloudflare API 检查项目是否已存在，避免盲目创建报错
+    account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID") or config.str_("cloudflare", "account_id", "")
+    api_token = os.environ.get("CLOUDFLARE_API_TOKEN") or config.str_("cloudflare", "api_token", "")
+    project_exists = False
+    if account_id and api_token:
+        try:
+            req = urllib.request.Request(
+                f"https://api.cloudflare.com/client/v4/accounts/{account_id}/pages/projects/{project_name}",
+                headers={"Authorization": f"Bearer {api_token}"}
+            )
+            with urllib.request.urlopen(req) as resp:
+                if resp.status == 200:
+                    project_exists = True
+        except urllib.error.HTTPError as e:
+            if e.code != 404:
+                print(f"[警告] 查询项目状态失败 (HTTP {e.code})，将尝试直接创建")
+
+    if project_exists:
+        print(f"✅ 项目 [{project_name}] 已存在，直接覆盖部署更新。")
+    else:
+        create_cmd = f"npx wrangler pages project create {project_name} --production-branch main"
+        run_shell_command(create_cmd)
 
     print("\n" + "="*50)
     print("🚀 第三阶段：分批上传与部署 (调用 upload.py)")
     print("="*50)
 
     # 动态组装部署命令
-    deploy_cmd = f"npx wrangler pages deploy {dist_dir} --project-name {args.project_name}"
-    threshold_bytes = args.threshold * 1024 * 1024
+    deploy_cmd = f"npx wrangler pages deploy {dist_dir} --project-name {project_name}"
+    threshold_bytes = threshold * 1024 * 1024
 
     print(f"转换输出目录: {dist_dir}")
     print(f"中转缓存目录: {tmp_dir}")

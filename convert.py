@@ -295,7 +295,7 @@ def build_index_tree(dir_path, output_root):
                     children.append({"name": item, "type": "folder", "children": folder_children})
         else:
             ext = os.path.splitext(item)[1].lower()
-            if item == 'index.json': continue
+            if item == 'index.json' or item == '_headers' or item.startswith('favicon.'): continue
             if ext in AUDIO_EXTENSIONS:
                 children.append({"name": item, "type": "audio", "src": web_src})
             elif ext in IMAGE_EXTENSIONS:
