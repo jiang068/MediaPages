@@ -80,19 +80,31 @@ def export_cloudflare_credentials():
 
 def main():
     parser = argparse.ArgumentParser(description="多媒体转换与自动分批部署脚手架")
-    parser.add_argument("-s", "--source", required=True, help="目标文件夹目录 (需要转换的原始文件所在路径)")
-    parser.add_argument("-w", "--workspace", required=True, help="临时处理文件夹目录 (工作区路径)")
-    parser.add_argument("-p", "--project-name", required=True, help="远端 Cloudflare Pages 的项目/仓库名称")
-
-    # 新增的可选参数：网页标题
-    parser.add_argument("-t", "--title", help="自定义网页标题 (可选，例如: 某科学的超电磁炮)")
-
-    # 可选参数，默认使用 512MB 阈值
-    parser.add_argument("--threshold", type=int, default=512, help="单次上传阈值(MB)，默认 512")
+    parser.add_argument("-s", "--source", help="原始媒体库目录，不传则使用 config.ini [main] → source")
+    parser.add_argument("-w", "--workspace", help="临时工作区目录，不传则使用 config.ini [main] → workspace")
+    parser.add_argument("-p", "--project-name", help="Cloudflare Pages 远端项目名称，不传则使用 config.ini [main] → project_name")
+    parser.add_argument("-t", "--title", help="网页标题，不传则使用 config.ini [site] → title")
+    parser.add_argument("--threshold", type=int, default=0, help="单次上传阈值(MB)，不传则使用 config.ini [cloudflare] → upload_threshold_mb")
     args = parser.parse_args()
 
-    source_dir = Path(args.source).resolve()
-    workspace_dir = Path(args.workspace).resolve()
+    # 优先级：CLI 参数 > config.ini > 报错（source/workspace/project_name 必须有值）
+    source_str = args.source or config.str_("main", "source", "")
+    workspace_str = args.workspace or config.str_("main", "workspace", "")
+    project_name = args.project_name or config.str_("main", "project_name", "")
+
+    missing = []
+    if not source_str: missing.append("-s / [main].source")
+    if not workspace_str: missing.append("-w / [main].workspace")
+    if not project_name: missing.append("-p / [main].project_name")
+    if missing:
+        print(f"[错误] 以下必要参数未设置：{', '.join(missing)}")
+        print("  请通过 CLI 参数传入，或在 config.ini 的 [main] 节中配置。")
+        sys.exit(1)
+
+    threshold = args.threshold or config.int_("cloudflare", "upload_threshold_mb", 512)
+
+    source_dir = Path(source_str).resolve()
+    workspace_dir = Path(workspace_str).resolve()
 
     if not source_dir.exists():
         print(f"[错误] 源目录不存在: {source_dir}")
