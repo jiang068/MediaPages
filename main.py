@@ -1,4 +1,5 @@
 import argparse
+import os
 import subprocess
 import sys
 import shutil
@@ -6,6 +7,7 @@ from pathlib import Path
 
 # 导入同目录下的 upload 模块
 import upload
+import config
 
 def run_shell_command(cmd, ignore_error=False):
     """辅助函数：运行 shell 命令"""
@@ -20,6 +22,61 @@ def run_shell_command(cmd, ignore_error=False):
         else:
             print(f"\n[致命错误] 命令执行失败: {cmd}")
             sys.exit(1)
+
+def apply_site_config(dist_dir, title_override):
+    """从 config.ini 应用 site 配置（标题、图标）。"""
+    from pathlib import Path
+    index_html_path = dist_dir / "index.html"
+    if not index_html_path.exists():
+        return
+
+    with open(index_html_path, "r", encoding="utf-8") as f:
+        html = f.read()
+
+    # 标题：CLI 参数 > config.ini > 默认 "MediaPages"
+    title = title_override or config.str_("site", "title", "MediaPages")
+    if title:
+        old_tag = "<title>MediaPages</title>"
+        new_tag = f"<title>{title}</title>"
+        if old_tag in html:
+            html = html.replace(old_tag, new_tag, 1)
+            print(f"✅ 网页标题已设置为: {title}")
+
+    # 网站图标：本地路径复制到 dist，URL 直接替换 href
+    favicon = config.str_("site", "favicon", "")
+    if favicon:
+        favicon_path = Path(favicon)
+        if favicon_path.is_absolute():
+            # 绝对路径：复制到 dist
+            dist_favicon = dist_dir / favicon_path.name
+            shutil.copy2(favicon_path, dist_favicon)
+            html = html.replace(
+                'href="./favicon.png"',
+                f'href="./{favicon_path.name}"',
+            )
+            print(f"✅ 网站图标已复制并设置: {favicon_path.name}")
+        elif favicon.startswith("http://") or favicon.startswith("https://"):
+            # URL：直接替换 href
+            html = html.replace('href="./favicon.png"', f'href="{favicon}"')
+            print(f"✅ 网站图标已设置为远程 URL: {favicon}")
+        else:
+            # 相对路径：直接替换 href
+            html = html.replace('href="./favicon.png"', f'href="{favicon}"')
+            print(f"✅ 网站图标已设置为: {favicon}")
+
+    with open(index_html_path, "w", encoding="utf-8") as f:
+        f.write(html)
+
+
+def export_cloudflare_credentials():
+    """从 config.ini 或环境变量读取 CF 凭证，设置环境变量供 wrangler 使用。"""
+    token = os.environ.get("CLOUDFLARE_API_TOKEN") or config.str_("cloudflare", "api_token", "")
+    acct = os.environ.get("CLOUDFLARE_ACCOUNT_ID") or config.str_("cloudflare", "account_id", "")
+    if token:
+        os.environ["CLOUDFLARE_API_TOKEN"] = token
+    if acct:
+        os.environ["CLOUDFLARE_ACCOUNT_ID"] = acct
+
 
 def main():
     parser = argparse.ArgumentParser(description="多媒体转换与自动分批部署脚手架")
@@ -71,31 +128,19 @@ def main():
         shutil.copytree(static_dir, dist_dir, dirs_exist_ok=True)
         print("静态资源复制完成。")
 
-        # 如果传入了自定义标题参数，则处理 index.html
-        if args.title:
-            index_html_path = dist_dir / "index.html"
-            if index_html_path.exists():
-                print(f"正在修改网页标题为: {args.title} - MediaPages")
-                try:
-                    with open(index_html_path, "r", encoding="utf-8") as f:
-                        html_content = f.read()
+        # 应用 site 配置（标题、图标）到 index.html
+        apply_site_config(dist_dir, args.title)
 
-                    old_title_tag = "<title>MediaPages</title>"
-                    new_title_tag = f"<title>{args.title} - MediaPages</title>"
-
-                    if old_title_tag in html_content:
-                        html_content = html_content.replace(old_title_tag, new_title_tag)
-                        with open(index_html_path, "w", encoding="utf-8") as f:
-                            f.write(html_content)
-                        print("✅ 标题修改成功！")
-                    else:
-                        print(f"[警告] 在 index.html 中未找到特定的 `{old_title_tag}` 标签，标题替换失败。")
-                except Exception as e:
-                    print(f"[错误] 修改 index.html 失败: {e}")
-            else:
-                print(f"[警告] 找不到 {index_html_path}，无法修改标题。")
+        # 根据配置生成 _headers 文件（CORS/安全头）
+        config.generate_headers(dist_dir)
+        headers_path = dist_dir / "_headers"
+        if headers_path.exists():
+            print(f"已生成 CORS 配置文件: {headers_path}")
         else:
-            print("未提供自定义标题参数 (-t)，保留默认标题。")
+            print("CORS 配置未启用，跳过 _headers 文件生成。")
+
+    # 从 config.ini 或环境变量导出 CF 凭证
+    export_cloudflare_credentials()
 
     print("\n" + "="*50)
     print(f"🚀 第二阶段：创建远端仓库 [{args.project_name}]")

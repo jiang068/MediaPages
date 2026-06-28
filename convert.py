@@ -8,6 +8,10 @@ from PIL import Image
 import math
 import re
 import logging
+import configparser
+from pathlib import Path
+
+import config
 
 # 配置日志
 logging.basicConfig(
@@ -18,7 +22,7 @@ logging.basicConfig(
 
 # 常量定义
 MB = 1024 * 1024
-MAX_SIZE = 24 * MB  # 24MB
+MAX_SIZE = config.int_("media", "max_file_size", 24 * MB)
 
 # 支持的媒体类型
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
@@ -50,6 +54,12 @@ def get_audio_bitrate(file_path):
 
 def compress_image(input_path, output_path):
     logging.info(f"Starting image compression: {input_path}")
+    q_start = config.int_("image", "quality_start", 95)
+    q_min = config.int_("image", "quality_min", 20)
+    q_step = config.int_("image", "quality_step", 5)
+    scale_start = config.float_("image", "scale_start", 0.9)
+    scale_min = config.float_("image", "scale_min", 0.3)
+    scale_step = config.float_("image", "scale_step", 0.1)
     try:
         img = Image.open(input_path)
         if img.mode != 'RGB': img = img.convert('RGB')
@@ -58,26 +68,26 @@ def compress_image(input_path, output_path):
         if ext not in {'.jpg', '.jpeg', '.png', '.gif', '.webp'}:
             output_path = os.path.splitext(output_path)[0] + '.webp'
 
-        quality = 95
-        while quality >= 20:
+        quality = q_start
+        while quality >= q_min:
             img.save(output_path, 'WEBP', quality=quality)
             if os.path.getsize(output_path) <= MAX_SIZE:
                 return
-            quality -= 5
+            quality -= q_step
 
-        scale = 0.9
-        while scale > 0.3:
+        scale = scale_start
+        while scale > scale_min:
             new_size = (int(img.width * scale), int(img.height * scale))
             img_resized = img.resize(new_size, Image.LANCZOS)
-            quality = 95
-            while quality >= 20:
+            quality = q_start
+            while quality >= q_min:
                 img_resized.save(output_path, 'WEBP', quality=quality)
                 if os.path.getsize(output_path) <= MAX_SIZE:
                     return
-                quality -= 5
-            scale -= 0.1
+                quality -= q_step
+            scale -= scale_step
 
-        img.save(output_path, 'WEBP', quality=20)
+        img.save(output_path, 'WEBP', quality=q_min)
     except Exception as e:
         logging.error(f"Image compression error: {e}")
         shutil.copy2(input_path, output_path)
@@ -85,20 +95,23 @@ def compress_image(input_path, output_path):
 def compress_audio(input_path, output_path):
     logging.info(f"Starting precise audio compression: {input_path}")
     temp_output = output_path + '.tmp'
+    safe_target = config.int_("audio", "safe_target_bytes", 24641536)  # 23.5 * MB
+    bitrate_max = config.int_("audio", "bitrate_max", 320)
+    bitrate_min = config.int_("audio", "bitrate_min", 32)
+    reduction = config.float_("audio", "bitrate_reduction_factor", 0.8)
 
     try:
         duration = get_audio_duration(input_path)
         orig_bitrate = get_audio_bitrate(input_path)
         if duration <= 0: duration = 60
 
-        safe_target_bytes = 23.5 * MB
-        calculated_kbps = int((safe_target_bytes * 8) / (duration * 1000))
+        calculated_kbps = int((safe_target * 8) / (duration * 1000))
 
         target_kbps = calculated_kbps
         if orig_bitrate > 0:
             target_kbps = min(target_kbps, orig_bitrate)
-        target_kbps = min(target_kbps, 320)
-        target_kbps = max(target_kbps, 32)
+        target_kbps = min(target_kbps, bitrate_max)
+        target_kbps = max(target_kbps, bitrate_min)
 
         while True:
             cmd = [
@@ -109,12 +122,12 @@ def compress_audio(input_path, output_path):
             subprocess.run(cmd, check=True, stderr=subprocess.DEVNULL)
 
             final_size = os.path.getsize(temp_output)
-            if final_size <= MAX_SIZE or target_kbps <= 32:
+            if final_size <= MAX_SIZE or target_kbps <= bitrate_min:
                 shutil.move(temp_output, output_path)
                 break
 
-            target_kbps = int(target_kbps * 0.8)
-            if target_kbps < 32: target_kbps = 32
+            target_kbps = int(target_kbps * reduction)
+            if target_kbps < bitrate_min: target_kbps = bitrate_min
 
     except Exception as e:
         logging.error(f"Error compressing audio {input_path}: {e}")
@@ -128,29 +141,24 @@ def convert_video_to_mp4(input_path, output_path):
     logging.info(f"Standardizing small video to MP4: {input_path}")
     target_output = os.path.splitext(output_path)[0] + '.mp4'
 
-    hw_cmd = [
-        'ffmpeg', '-y', '-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda',
-        '-i', input_path,
-        '-vf', 'scale_cuda=format=nv12',
-        '-c:v', 'h264_nvenc', '-preset', 'p6', '-tune', 'hq',
-        '-profile:v', 'high', '-cq', '22',
-        '-c:a', 'aac', '-b:a', '320k',
-        '-movflags', '+faststart',
-        target_output
-    ]
+    # 复制模式：直接封装，不重新编码
+    if config.str_("video", "mode", "encode") == "copy":
+        cmd = config.build_mp4_copy_cmd(input_path, target_output)
+        try:
+            subprocess.run(cmd, check=True, stderr=subprocess.DEVNULL)
+            return True
+        except Exception as e:
+            logging.error(f"Copy failed for {input_path}: {e}")
+            if os.path.exists(target_output): os.remove(target_output)
+            return False
 
+    # 硬件编码模式
+    hw_cmd = config.build_mp4_hw_cmd(input_path, target_output)
     try:
         subprocess.run(hw_cmd, check=True, stderr=subprocess.DEVNULL)
         return True
     except subprocess.CalledProcessError:
-        sw_cmd = [
-            'ffmpeg', '-y', '-i', input_path,
-            '-c:v', 'libx264', '-preset', 'slow', '-crf', '22',
-            '-pix_fmt', 'yuv420p',
-            '-c:a', 'aac', '-b:a', '320k',
-            '-movflags', '+faststart',
-            target_output
-        ]
+        sw_cmd = config.build_mp4_sw_cmd(input_path, target_output)
         try:
             subprocess.run(sw_cmd, check=True, stderr=subprocess.DEVNULL)
             return True
@@ -166,46 +174,30 @@ def compress_video(input_path, output_dir):
 
     video_folder = os.path.join(output_dir, base_name)
     os.makedirs(video_folder, exist_ok=True)
-    logging.info(f"Starting high-performance HLS processing: {input_path}")
+    logging.info(f"Starting HLS processing: {input_path}")
 
     output_playlist = os.path.join(video_folder, f"{base_name}-0.m3u8")
     hls_segments = os.path.join(video_folder, "chunk_%04d.ts")
 
-    # 基于用户提供的高性能 CUDA 优化参数
-    hw_cmd = [
-        'ffmpeg', '-y', '-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda',
-        '-i', input_path,
-        '-map', '0:v:0', '-map', '0:a:0',
-        '-vf', 'scale_cuda=format=nv12',
-        '-c:v', 'h264_nvenc',
-        '-preset', 'p6',
-        '-profile:v', 'high', '-level:v', '5.2',
-        '-rc', 'vbr', '-b:v', '18M', '-maxrate', '24M', '-bufsize', '36M',
-        '-g', '180', '-keyint_min', '180', '-sc_threshold', '0',
-        '-c:a', 'aac', '-b:a', '320k',
-        '-hls_time', '3', '-hls_playlist_type', 'vod',
-        '-hls_segment_filename', hls_segments,
-        output_playlist
-    ]
+    # 复制模式：不重新编码，直接切片，保留原始画质
+    if config.str_("video", "mode", "encode") == "copy":
+        cmd = config.build_hls_copy_cmd(input_path, output_playlist, hls_segments)
+        try:
+            subprocess.run(cmd, check=True, stderr=subprocess.DEVNULL)
+        except Exception as e:
+            logging.error(f"HLS copy failed for {base_name}: {e}")
+            raise
+    else:
+        # 编码模式（默认）：硬件 + 软件回退
+        hw_cmd = config.build_hls_hw_cmd(input_path, output_playlist, hls_segments)
+        try:
+            subprocess.run(hw_cmd, check=True, stderr=subprocess.DEVNULL)
+        except Exception as e:
+            logging.warning(f"CUDA failed, falling back to CPU for {base_name}. Error: {e}")
+            sw_cmd = config.build_hls_sw_cmd(input_path, output_playlist, hls_segments)
+            subprocess.run(sw_cmd, check=True, stderr=subprocess.DEVNULL)
 
-    try:
-        subprocess.run(hw_cmd, check=True, stderr=subprocess.DEVNULL)
-    except Exception as e:
-        logging.warning(f"CUDA failed, falling back to CPU for {base_name}. Error: {e}")
-        sw_cmd = [
-            'ffmpeg', '-y', '-i', input_path,
-            '-map', '0:v:0', '-map', '0:a:0',
-            '-vf', 'scale=format=yuv420p',
-            '-c:v', 'libx264', '-preset', 'medium', '-crf', '20',
-            '-g', '180', '-keyint_min', '180', '-sc_threshold', '0',
-            '-c:a', 'aac', '-b:a', '320k',
-            '-hls_time', '3', '-hls_playlist_type', 'vod',
-            '-hls_segment_filename', hls_segments,
-            output_playlist
-        ]
-        subprocess.run(sw_cmd, check=True, stderr=subprocess.DEVNULL)
-
-    # 智能字幕处理 (保持原逻辑不变)
+    # 智能字幕处理
     process_subtitles(input_dir_path, base_name, video_folder, input_path)
 
 def process_subtitles(input_dir_path, base_name, video_folder, input_video_path):
@@ -279,12 +271,14 @@ def build_index_tree(dir_path, output_root):
                     suffix = vtt_name_no_ext[len(base_name)+1:] if vtt_name_no_ext.startswith(base_name + "_") else vtt_name_no_ext
                     label = suffix
                     suffix_lower = suffix.lower()
-
-                    if any(x in suffix_lower for x in ['sc', 'chs', 'zh']):
-                        srclang, default = "zh", True
-                    elif any(x in suffix_lower for x in ['tc', 'cht', 'hant']):
-                        srclang, default = "zh-Hant", False
-                    else:
+                    lang_map = config.get_subtitle_lang_map()
+                    matched = False
+                    for lang_keyword, (lang_val, default_val) in lang_map.items():
+                        if lang_keyword in suffix_lower:
+                            srclang, default = lang_val, default_val
+                            matched = True
+                            break
+                    if not matched:
                         srclang, default = "und", False
 
                     vtt_rel = os.path.relpath(os.path.join(full_path, vtt), output_root).replace('\\', '/')

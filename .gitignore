@@ -1,0 +1,32 @@
+# 本地配置（用户自行修改，不上传）
+config.ini
+
+# MediaPages 项目文件
+workspace/
+workdir/
+dist/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+.eggs/
+*.so
+*.pyc
+
+# 环境 / 配置
+.env
+.env.local
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# 日志
+*.log
