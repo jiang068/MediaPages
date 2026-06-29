@@ -318,6 +318,13 @@ def generate_index(output_dir, set_default=True):
     with open(index_path, 'w', encoding='utf-8') as f:
         json.dump(root_nodes, f, indent=2, ensure_ascii=False)
 
+def is_output_newer(input_path, output_path):
+    """检查输出文件是否已存在且比输入文件更新（mtime 比较）。"""
+    if not os.path.exists(output_path):
+        return False
+    return os.path.getmtime(output_path) >= os.path.getmtime(input_path)
+
+
 def main():
     parser = argparse.ArgumentParser(description='Universal Media Processing Tool')
     parser.add_argument('input_dir', help='Input directory path')
@@ -339,11 +346,25 @@ def main():
             ext = os.path.splitext(file)[1].lower()
             file_size = os.path.getsize(input_path)
 
-            # 检查是否已处理过 (MP4 转换或 HLS 文件夹)
+            # 检查是否已处理过（HLS 切片或 MP4 转换）
             if ext in VIDEO_EXTENSIONS:
                 base_name = os.path.splitext(file)[0]
-                if os.path.exists(os.path.join(out_root, base_name, f"{base_name}-0.m3u8")):
+                output_m3u8 = os.path.join(out_root, base_name, f"{base_name}-0.m3u8")
+                # 如果 HLS 切片存在且比源文件更新，跳过
+                if os.path.exists(output_m3u8) and is_output_newer(input_path, output_m3u8):
                     continue
+                # 如果小 MP4 存在且比源文件更新，跳过
+                if ext == '.mp4' and is_output_newer(input_path, output_path):
+                    continue
+
+            # 如果音/图片的目标文件存在且比源文件更新，跳过
+            if ext in AUDIO_EXTENSIONS and is_output_newer(input_path, output_path):
+                continue
+            if ext in IMAGE_EXTENSIONS and is_output_newer(input_path, output_path):
+                continue
+            # 字幕文件（非 .ass）存在且更新，跳过
+            if ext in SUBTITLE_EXTENSIONS and ext != '.ass' and is_output_newer(input_path, output_path):
+                continue
 
             # --- 核心处理逻辑 ---
             if ext in IMAGE_EXTENSIONS:

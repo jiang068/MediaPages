@@ -99,6 +99,8 @@ def main():
     parser.add_argument("-p", "--project-name", help="Cloudflare Pages 远端项目名称，不传则使用 config.ini [main] → project_name")
     parser.add_argument("-t", "--title", help="网页标题，不传则使用 config.ini [site] → title")
     parser.add_argument("--threshold", type=int, default=0, help="单次上传阈值(MB)，不传则使用 config.ini [cloudflare] → upload_threshold_mb")
+    parser.add_argument("--skip-convert", action="store_true", help="跳过格式转换阶段（仅重新部署，适合只改了静态资源时）")
+    parser.add_argument("--skip-deploy", action="store_true", help="跳过部署阶段（仅处理到 dist，适合调试）")
     args = parser.parse_args()
 
     # 优先级：CLI 参数 > config.ini > 报错（source/workspace/project_name 必须有值）
@@ -136,9 +138,12 @@ def main():
     print("🚀 第一阶段：格式转换与压缩 (调用 convert.py)")
     print("="*50)
 
-    # 调用 convert.py
-    convert_cmd = f'"{sys.executable}" convert.py "{source_dir}" "{dist_dir}"'
-    run_shell_command(convert_cmd)
+    if not args.skip_convert:
+        # 调用 convert.py
+        convert_cmd = f'"{sys.executable}" convert.py "{source_dir}" "{dist_dir}"'
+        run_shell_command(convert_cmd)
+    else:
+        print("跳过转换阶段（--skip-convert），dist 目录保持之前状态。")
 
     print("\n" + "="*50)
     print("🚀 附加阶段：复制静态资源并设置网页标题")
@@ -168,63 +173,70 @@ def main():
     # 从 config.ini 或环境变量导出 CF 凭证
     export_cloudflare_credentials()
 
-    print("\n" + "="*50)
-    print(f"🚀 第二阶段：创建远端仓库 [{project_name}]")
-    print("="*50)
+    if not args.skip_deploy:
+        print("\n" + "="*50)
+        print(f"🚀 第二阶段：创建远端仓库 [{project_name}]")
+        print("="*50)
 
-    # 通过 Cloudflare API 检查项目是否已存在，避免盲目创建报错
-    account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID") or config.str_("cloudflare", "account_id", "")
-    api_token = os.environ.get("CLOUDFLARE_API_TOKEN") or config.str_("cloudflare", "api_token", "")
-    project_exists = False
-    if account_id and api_token:
-        try:
-            req = urllib.request.Request(
-                f"https://api.cloudflare.com/client/v4/accounts/{account_id}/pages/projects/{project_name}",
-                headers={"Authorization": f"Bearer {api_token}"}
-            )
-            with urllib.request.urlopen(req) as resp:
-                if resp.status == 200:
-                    project_exists = True
-        except urllib.error.HTTPError as e:
-            if e.code != 404:
-                print(f"[警告] 查询项目状态失败 (HTTP {e.code})，将尝试直接创建")
+        # 通过 Cloudflare API 检查项目是否已存在，避免盲目创建报错
+        account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID") or config.str_("cloudflare", "account_id", "")
+        api_token = os.environ.get("CLOUDFLARE_API_TOKEN") or config.str_("cloudflare", "api_token", "")
+        project_exists = False
+        if account_id and api_token:
+            try:
+                req = urllib.request.Request(
+                    f"https://api.cloudflare.com/client/v4/accounts/{account_id}/pages/projects/{project_name}",
+                    headers={"Authorization": f"Bearer {api_token}"}
+                )
+                with urllib.request.urlopen(req) as resp:
+                    if resp.status == 200:
+                        project_exists = True
+            except urllib.error.HTTPError as e:
+                if e.code != 404:
+                    print(f"[警告] 查询项目状态失败 (HTTP {e.code})，将尝试直接创建")
 
-    if project_exists:
-        print(f"✅ 项目 [{project_name}] 已存在，直接覆盖部署更新。")
+        if project_exists:
+            print(f"✅ 项目 [{project_name}] 已存在，直接覆盖部署更新。")
+        else:
+            create_cmd = f"npx wrangler pages project create {project_name} --production-branch main"
+            run_shell_command(create_cmd)
+
+        print("\n" + "="*50)
+        print("🚀 第三阶段：分批上传与部署 (调用 upload.py)")
+        print("="*50)
+
+        # 动态组装部署命令
+        deploy_cmd = f"npx wrangler pages deploy {dist_dir} --project-name {project_name}"
+        threshold_bytes = threshold * 1024 * 1024
+
+        print(f"转换输出目录: {dist_dir}")
+        print(f"中转缓存目录: {tmp_dir}")
+        print(f"部署命令: {deploy_cmd}")
+
+        # 调用 upload.py 主函数（增量模式：依赖 wrangler 自动跳过已上传的未变更文件）
+        upload.run_deploy(
+            target_dir=dist_dir,
+            cache_dir=tmp_dir,
+            bash_cmd=deploy_cmd,
+            threshold=threshold_bytes,
+            resume=args.skip_convert,
+            incremental=True
+        )
+
+        print("\n" + "="*50)
+        print("🧹 第四阶段：清理临时工作区")
+        print("="*50)
+
+        # 直接将整个 tmp_dir 连带里面的所有空文件夹结构一起销毁
+        if tmp_dir.exists():
+            shutil.rmtree(tmp_dir)
+            print(f"已彻底删除中转临时目录: {tmp_dir}")
+
+        print("\n🎉 全部流程执行完毕！")
     else:
-        create_cmd = f"npx wrangler pages project create {project_name} --production-branch main"
-        run_shell_command(create_cmd)
-
-    print("\n" + "="*50)
-    print("🚀 第三阶段：分批上传与部署 (调用 upload.py)")
-    print("="*50)
-
-    # 动态组装部署命令
-    deploy_cmd = f"npx wrangler pages deploy {dist_dir} --project-name {project_name}"
-    threshold_bytes = threshold * 1024 * 1024
-
-    print(f"转换输出目录: {dist_dir}")
-    print(f"中转缓存目录: {tmp_dir}")
-    print(f"部署命令: {deploy_cmd}")
-
-    # 调用修改后的 upload.py 主函数
-    upload.run_deploy(
-        target_dir=dist_dir,
-        cache_dir=tmp_dir,
-        bash_cmd=deploy_cmd,
-        threshold=threshold_bytes
-    )
-
-    print("\n" + "="*50)
-    print("🧹 第四阶段：清理临时工作区")
-    print("="*50)
-
-    # 直接将整个 tmp_dir 连带里面的所有空文件夹结构一起销毁
-    if tmp_dir.exists():
-        shutil.rmtree(tmp_dir)
-        print(f"已彻底删除中转临时目录: {tmp_dir}")
-
-    print("\n🎉 全部流程执行完毕！")
+        print("\n" + "="*50)
+        print("跳过部署阶段（--skip-deploy），dist 目录内容保留。")
+        print("="*50)
 
 if __name__ == "__main__":
     main()

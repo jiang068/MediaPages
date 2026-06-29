@@ -58,14 +58,25 @@ def run_bash_command(cmd):
         return False
 
 
-def run_deploy(target_dir, cache_dir, bash_cmd, threshold, resume=False):
+def run_deploy(target_dir, cache_dir, bash_cmd, threshold, resume=False, incremental=False):
     """
     接收外部传入的路径和参数执行部署逻辑
     """
     print(f"目标目录: {target_dir}")
     print(f"缓存目录: {cache_dir}")
     print(f"大小阈值: {threshold / (1024**2):.2f} MB")
-    print(f"断点续传: {'开启' if resume else '关闭'}\n")
+    print(f"断点续传: {'开启' if resume else '关闭'}")
+    print(f"增量模式: {'开启' if incremental else '关闭'}\n")
+
+    if incremental:
+        # 增量模式：直接部署，不再搬运切分。wrangler 会自动跳过已上传的未变更文件。
+        print("--- 增量模式：直接部署，依赖 wrangler 自动跳过已上传的文件 ---")
+        success = run_bash_command(bash_cmd)
+        if not success:
+            print("[错误] 部署命令执行失败。")
+            return
+        print("  增量部署完成。")
+        return
 
     if resume:
         # 断点续传模式：直接对目标文件夹当前的内容重试部署，跳过清空阶段
@@ -173,6 +184,9 @@ def main():
     # 新增的断点续传参数
     parser.add_argument("-r", "--resume", action="store_true", help="启用断点续传：优先上传当前目标文件夹内剩余的文件，再继续从缓存搬运")
 
+    # 增量上传参数：跳过文件搬运，直接部署（适合文件未变动的二次部署）
+    parser.add_argument("-i", "--incremental", action="store_true", help="增量模式：不搬运文件，直接部署，依赖 wrangler 自动跳过未变更文件")
+
     args = parser.parse_args()
 
     target_dir = Path(args.target).resolve()
@@ -192,7 +206,7 @@ def main():
     print(f"--- 启动独立部署脚本 ---")
     print(f"远端项目: {args.project}")
 
-    run_deploy(target_dir, cache_dir, bash_cmd, threshold_bytes, resume=args.resume)
+    run_deploy(target_dir, cache_dir, bash_cmd, threshold_bytes, resume=args.resume, incremental=args.incremental)
 
 
 if __name__ == "__main__":
