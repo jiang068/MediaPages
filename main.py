@@ -39,11 +39,13 @@ def apply_site_config(dist_dir, title_override):
     # 标题：CLI 参数 > config.ini > 默认 "MediaPages"
     title = title_override or config.str_("site", "title", "MediaPages")
     if title:
-        old_tag = "<title>MediaPages</title>"
-        new_tag = f"<title>{title}</title>"
-        if old_tag in html:
-            html = html.replace(old_tag, new_tag, 1)
-            print(f"✅ 网页标题已设置为: {title}")
+        import re
+        # 使用正则智能匹配任意 <title>...</title> 标签并替换
+        html, count = re.subn(r"<title>.*?</title>", f"<title>{title}</title>", html, count=1, flags=re.IGNORECASE)
+        if count > 0:
+            print(f"✅ 网页标题已成功设置为: {title}")
+        else:
+            print(f"⚠️ 未能找到网页标题标签进行替换")
 
     # 网站图标：本地路径复制到 dist，URL 直接替换 href
     favicon = config.str_("site", "favicon", "")
@@ -71,15 +73,45 @@ def apply_site_config(dist_dir, title_override):
         f.write(html)
 
     # 鉴权：如果启用了密码，注入 auth 脚本
-    auth = config.generate_auth(dist_dir)
-    if auth["enabled"]:
-        with open(index_html_path, "r", encoding="utf-8") as f:
-            html = f.read()
-        html = html.replace("<body>", f"<body>\n{auth['script_before']}")
-        html = html.replace("</body>", f"\n{auth['script_after']}\n</body>")
-        with open(index_html_path, "w", encoding="utf-8") as f:
-            f.write(html)
-        print("✅ 网页密码鉴权已启用")
+    # 鉴权：使用 Cloudflare 边缘节点原生拦截 (HTTP Basic Auth) + 路由规避
+    auth_enabled = config.bool_("auth", "enabled", False)
+    auth_password = config.str_("auth", "password", "")
+    
+    if auth_enabled and auth_password:
+        import base64
+        import json
+        
+        # HTTP 基本认证需要 base64(用户名:密码)
+        credentials = f"admin:{auth_password}"
+        base64_cred = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
+        
+        # 1. 生成拦截脚本
+        worker_code = f"""export default {{
+  async fetch(request, env) {{
+    const auth = request.headers.get("Authorization");
+    if (auth !== "Basic {base64_cred}") {{
+      return new Response("Unauthorized", {{
+        status: 401,
+        headers: {{ "WWW-Authenticate": 'Basic realm="Login Required (Username: admin)"' }}
+      }});
+    }}
+    return env.ASSETS.fetch(request);
+  }}
+}};"""
+        worker_path = dist_dir / "_worker.js"
+        worker_path.write_text(worker_code, encoding="utf-8")
+        
+        # 2. 生成路由规则（这是省流的核心）
+        # 仅对网站根目录和 index.html 触发鉴权，其余所有静态资源(如视频切片.ts, 图片)直接放行
+        routes_data = {
+            "version": 1,
+            "include": ["/", "/index.html"],
+            "exclude": []
+        }
+        routes_path = dist_dir / "_routes.json"
+        routes_path.write_text(json.dumps(routes_data), encoding="utf-8")
+        
+        print(f"✅ 原生弹窗鉴权已启用 (默认账号: admin, 密码: {auth_password})，并已配置路由豁免以节省额度")
 
 
 def export_cloudflare_credentials():
