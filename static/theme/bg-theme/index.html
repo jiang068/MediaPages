@@ -14,7 +14,7 @@
     <!-- 引入纯静态编译样式，无任何 JS 运行时卡顿，性能拉满 -->
     <link rel="stylesheet" href="./tailwind-built.css">
 
-    <!-- 极简本地 Lucide 引擎：完美替代原庞大 JS，0延时，对 theme.js 零污染 -->
+    <!-- 极简本地 Lucide 引擎：完美替代原庞大 JS，0延时，对 theme.js 零污染, 完美兼容 Tailwind 显隐条件类） -->
     <script>
         window.lucide = {
             createIcons: function () {
@@ -30,9 +30,20 @@
                 document.querySelectorAll('i[data-lucide]').forEach(function (el) {
                     var name = el.getAttribute('data-lucide');
                     if (iconMap[name]) {
-                        el.style.display = 'inline-flex';
-                        el.style.alignItems = 'center';
-                        el.style.justifyContent = 'center';
+                        // 【核心修正】检查图标自身或响应式前缀中是否包含了显隐类（如 hidden, block, dark:block 等）
+                        var hasDisplayClass = Array.from(el.classList).some(function (cls) {
+                            return ['hidden', 'block', 'flex', 'inline-flex', 'inline-block'].some(function (d) {
+                                return cls === d || cls.endsWith(':' + d);
+                            });
+                        });
+
+                        // 如果没有写显隐类，才做常规兜底，防止破坏原有的样式层级
+                        if (!hasDisplayClass) {
+                            el.style.display = 'inline-flex';
+                            el.style.alignItems = 'center';
+                            el.style.justifyContent = 'center';
+                        }
+
                         el.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full">' + iconMap[name] + '</svg>';
                     }
                 });
