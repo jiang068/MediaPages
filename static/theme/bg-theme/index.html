@@ -5,29 +5,42 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>MediaPages - 冰菓 HYOUKA</title>
     <link rel="icon" type="image/png" href="./favicon.png" />
-    <link rel="stylesheet" href="./style.css">
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- 现代浏览器并行加速：只请求网页最需要的精准权重，体积最小，加载飞快 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;900&family=Playfair+Display:ital,wght@1,700;1,900&display=swap" rel="stylesheet">
+    
+    <!-- 引入纯静态编译样式，无任何 JS 运行时卡顿，性能拉满 -->
+    <link rel="stylesheet" href="./tailwind-built.css">
+
+    <!-- 极简本地 Lucide 引擎：完美替代原庞大 JS，0延时，对 theme.js 零污染 -->
     <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        classic: {
-                            gold: '#dfb76c',
-                            green: '#2c4a3e',
-                            dark: '#121614',
-                            light: '#f7f6f2'
-                        }
+        window.lucide = {
+            createIcons: function () {
+                var iconMap = {
+                    'book-open': '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>',
+                    'sun': '<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>',
+                    'moon': '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>',
+                    'menu': '<line x1="4" x2="20" y1="12" y2="12"></line><line x1="4" x2="20" y1="6" y2="6"></line><line x1="4" x2="20" y1="18" y2="18"></line>',
+                    'chevron-down': '<path d="m6 9 6 6 6-6"></path>',
+                    'chevron-up': '<path d="m18 15-6-6-6 6"></path>',
+                    'list-video': '<path d="M12 12H3M16 6H3M12 18H3m14-6 5 3-5 3v-6Z"></path>'
+                };
+                document.querySelectorAll('i[data-lucide]').forEach(function (el) {
+                    var name = el.getAttribute('data-lucide');
+                    if (iconMap[name]) {
+                        el.style.display = 'inline-flex';
+                        el.style.alignItems = 'center';
+                        el.style.justifyContent = 'center';
+                        el.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full">' + iconMap[name] + '</svg>';
                     }
-                }
+                });
             }
-        }
+        };
     </script>
 </head>
+
 <body class="bg-classic-light text-zinc-800 dark:bg-classic-dark dark:text-zinc-100 transition-colors duration-300">
 
     <!-- Navbar -->

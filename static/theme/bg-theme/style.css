@@ -1,8 +1,12 @@
+/* 编译：npx tailwindcss@3 -i ./style.css -o ./tailwind-built.css --minify */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* ════════════════════════════════════════════════
    MediaPages bg-theme — classic anime skin
    ════════════════════════════════════════════════ */
-
-@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght=500;900&family=Playfair+Display:ital,wght@1,700&display=swap');
 
 body {
     font-family: 'Noto Serif SC', serif;
