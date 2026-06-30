@@ -16,6 +16,7 @@ class MediaPlayer {
   }
 
   play(item) {
+    this._currentItem = item; // 保存当前播放项供主题同步
     const { type, src, subtitles } = item;
     this._hideAll();
 
@@ -26,6 +27,9 @@ class MediaPlayer {
     } else if (type === 'image') {
       this._showImage(src);
     }
+
+    // 通知主题更新 UI
+    if (window.updatePlayer) window.updatePlayer(item);
   }
 
   stop() {

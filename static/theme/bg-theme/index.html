@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>MediaPages - 冰菓 HYOUKA</title>
+    <link rel="icon" type="image/png" href="./favicon.png" />
+    <link rel="stylesheet" href="./style.css">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        classic: {
+                            gold: '#dfb76c',
+                            green: '#2c4a3e',
+                            dark: '#121614',
+                            light: '#f7f6f2'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-classic-light text-zinc-800 dark:bg-classic-dark dark:text-zinc-100 transition-colors duration-300">
+
+    <!-- Navbar -->
+    <nav id="navbar" class="fixed top-0 w-full z-50 transition-all duration-300 bg-transparent">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-20">
+                <div class="flex items-center gap-2 cursor-pointer" onclick="scrollToSection('hero')">
+                    <i data-lucide="book-open" class="h-6 w-6 text-classic-gold"></i>
+                    <span class="font-en text-xl font-bold tracking-widest">HYOUKA</span>
+                </div>
+
+                <!-- PC 端菜单 -->
+                <div class="hidden md:flex items-center space-x-8">
+                    <button onclick="scrollToSection('hero')" class="text-sm font-bold tracking-widest hover:text-classic-gold transition-colors">HOME</button>
+                    <button onclick="scrollToSection('player-section')" class="text-sm font-bold tracking-widest hover:text-classic-gold transition-colors">EPISODES</button>
+                    <button onclick="scrollToSection('characters')" class="text-sm font-bold tracking-widest hover:text-classic-gold transition-colors">CHARACTERS</button>
+                    <button onclick="scrollToSection('gallery')" class="text-sm font-bold tracking-widest hover:text-classic-gold transition-colors">GALLERY</button>
+
+                    <!-- 主题切换按钮 (PC) -->
+                    <button onclick="toggleTheme()" class="p-2 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors">
+                        <i data-lucide="sun" class="hidden dark:block h-5 w-5 text-classic-gold"></i>
+                        <i data-lucide="moon" class="block dark:hidden h-5 w-5 text-zinc-700"></i>
+                    </button>
+                </div>
+
+                <!-- 移动端右侧控制栏 -->
+                <div class="flex items-center gap-4 md:hidden">
+                    <button onclick="toggleTheme()" class="p-2 rounded-full bg-zinc-200/50 dark:bg-zinc-800/50">
+                        <i data-lucide="sun" class="hidden dark:block h-5 w-5 text-classic-gold"></i>
+                        <i data-lucide="moon" class="block dark:hidden h-5 w-5 text-zinc-700"></i>
+                    </button>
+                    <button onclick="toggleMobileMenu()" class="text-zinc-700 dark:text-zinc-300">
+                        <i data-lucide="menu" class="h-6 w-6"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 移动端下拉菜单 -->
+        <div id="mobile-menu" class="hidden md:hidden bg-classic-light/95 dark:bg-classic-dark/95 border-b border-zinc-200 dark:border-zinc-800 backdrop-blur-xl px-4 py-4 space-y-3">
+            <button onclick="scrollToSection('hero'); toggleMobileMenu()" class="block w-full text-left font-bold py-2">HOME</button>
+            <button onclick="scrollToSection('player-section'); toggleMobileMenu()" class="block w-full text-left font-bold py-2">EPISODES</button>
+            <button onclick="scrollToSection('characters'); toggleMobileMenu()" class="block w-full text-left font-bold py-2">CHARACTERS</button>
+            <button onclick="scrollToSection('gallery'); toggleMobileMenu()" class="block w-full text-left font-bold py-2">GALLERY</button>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section id="hero" class="relative h-screen w-full overflow-hidden bg-black flex flex-col md:flex-row">
+        <div id="hero-strips" class="absolute inset-0 z-0 flex flex-col md:flex-row w-full h-full"></div>
+
+        <div class="absolute inset-0 z-10 pointer-events-none flex flex-col items-center justify-center bg-black/20 dark:bg-black/40">
+            <h1 class="text-5xl md:text-8xl font-black text-white tracking-wider text-center font-en drop-shadow-xl select-none">
+                冰菓 <span class="text-classic-gold">HYOUKA</span>
+            </h1>
+            <p class="text-xs md:text-base font-bold text-zinc-200 mt-4 tracking-[0.4em] drop-shadow-md select-none">
+                “我很好奇！”古典部少年的蔷薇色青春物语
+            </p>
+        </div>
+
+        <div class="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 animate-bounce cursor-pointer" onclick="scrollToSection('player-section')">
+            <i data-lucide="chevron-down" class="w-8 h-8 text-white drop-shadow-md"></i>
+        </div>
+    </section>
+
+    <!-- Video Player Section -->
+    <section id="player-section" class="py-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 border-t border-zinc-200 dark:border-zinc-800">
+        <div class="mb-10 flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+            <div>
+                <h2 class="text-3xl md:text-4xl font-black font-en"><span class="text-classic-gold">01</span> WATCH VIDEO</h2>
+                <p class="text-zinc-500 text-xs tracking-widest mt-1">EPISODE SELECTOR & NATIVE PLAYER</p>
+            </div>
+            <div class="text-xs font-medium text-classic-gold px-3 py-1 bg-zinc-200/60 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-full max-w-xs truncate">
+                <span id="video-title">正在加载剧集...</span>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 bg-zinc-200/50 dark:bg-zinc-900/50 p-3 sm:p-4 rounded-2xl backdrop-blur-md shadow-inner">
+            <div class="lg:col-span-3 flex flex-col justify-between">
+                <div class="relative w-full aspect-video bg-black rounded-xl overflow-hidden shadow-2xl group">
+                    <video id="video-viewer" class="w-full h-full object-contain" controls playsinline webkit-playsinline x5-playsinline preload="metadata"></video>
+                    <audio id="audio-viewer" class="media-viewer" controls style="display:none"></audio>
+                    <img id="image-viewer" class="media-viewer" alt="图片预览" style="display:none">
+                    <div id="placeholder" class="placeholder" style="display:none"></div>
+                </div>
+            </div>
+            <div class="lg:col-span-1 flex flex-col h-full">
+                <span class="text-xs font-bold text-zinc-400 dark:text-zinc-500 mb-3 px-1 flex items-center gap-1 lg:flex">
+                    <i data-lucide="list-video" class="w-4 h-4"></i> 剧集列表
+                    <button id="episode-toggle" class="lg:hidden ml-auto cursor-pointer hover:text-classic-gold transition-colors" onclick="toggleEpisodeList()">
+                        <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                    </button>
+                </span>
+                <div id="episode-list" class="flex lg:flex-col gap-2 overflow-x-auto lg:overflow-y-auto lg:max-h-[360px] pb-2 lg:pb-0 snap-x hidden lg:flex"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Character Showcase -->
+    <section id="characters" class="py-20 bg-zinc-100 dark:bg-zinc-900/40 border-t border-zinc-200 dark:border-zinc-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 class="text-3xl md:text-4xl font-black font-en mb-12"><span class="text-classic-gold">02</span> CLASSIC CLUB</h2>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- 侧边切换栏 -->
+                <div id="char-nav" class="flex lg:flex-col gap-2 overflow-x-auto lg:overflow-x-visible pb-2 lg:pb-0 snap-x"></div>
+                
+                <!-- 【优化核心】直接固定新版双列卡片骨架，规避动态插入导致的页面闪烁与塌陷 -->
+                <div class="lg:col-span-2">
+                    <div class="bg-zinc-200/40 dark:bg-zinc-900 rounded-2xl p-6 sm:p-10 border border-zinc-300/50 dark:border-zinc-800/80 shadow-xl">
+                        <div class="flex flex-col md:flex-row gap-8 justify-between items-center md:items-stretch h-full">
+                            
+                            <!-- 左侧：核心文本要素预留框 -->
+                            <div class="flex-1 flex flex-col justify-between space-y-6 order-2 md:order-1 w-full">
+                                <div>
+                                    <span id="char-p-en" class="text-xs font-mono text-classic-gold font-bold tracking-widest block mb-1">LOADING...</span>
+                                    <h3 id="char-p-name" class="text-3xl font-black mb-1">------</h3>
+                                    <p id="char-p-role" class="text-sm text-zinc-500">------</p>
+                                </div>
+                                <div class="py-4 border-t border-b border-zinc-300/40 dark:border-zinc-800">
+                                    <span class="text-xs text-zinc-400 block mb-1">社团信条 / 经典语录</span>
+                                    <p class="text-base italic font-medium text-classic-green dark:text-classic-gold">“<span id="char-p-motto">------</span>”</p>
+                                </div>
+                                <p id="char-p-desc" class="text-sm leading-relaxed text-zinc-600 dark:text-zinc-400 font-light">------</p>
+                            </div>
+
+                            <!-- 右侧：立绘硬骨架物理防塌陷舱，onload 达成流畅淡入 -->
+                            <div class="w-full md:w-5/12 max-w-[240px] md:max-w-none aspect-[3/4] md:aspect-auto min-h-[280px] flex items-center justify-center overflow-hidden order-1 md:order-2 rounded-xl bg-zinc-300/20 dark:bg-zinc-800/50 p-2 border border-zinc-300/30 dark:border-zinc-800/50">
+                                <img id="char-p-img" 
+                                     src="" 
+                                     alt="Character Portrait" 
+                                     class="w-full h-full object-contain transform hover:scale-105 transition-opacity duration-300 ease-out opacity-0" 
+                                     onload="this.style.opacity=1;" />
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Gallery Section -->
+    <section id="gallery" class="py-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 border-t border-zinc-200 dark:border-zinc-800">
+        <div class="mb-12">
+            <h2 class="text-3xl md:text-4xl font-black font-en"><span class="text-classic-gold">03</span> VISUAL GALLERY</h2>
+            <p class="text-zinc-500 text-xs tracking-widest mt-1">SCENERY & MEMORIES</p>
+        </div>
+        <div id="gallery-grid" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
+    </section>
+
+    <footer class="bg-zinc-200 dark:bg-zinc-950 text-zinc-500 py-12 border-t border-zinc-300 dark:border-zinc-900">
+        <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center text-xs gap-4">
+            <div class="text-center sm:text-left">
+                <p class="font-en font-bold text-sm text-zinc-700 dark:text-zinc-300 tracking-wider">KAMIYAMA CLASSIC LITERATURE CLUB</p>
+                <p class="mt-1">© Honobu Yonezawa / Kyoto Animation</p>
+            </div>
+            <div class="flex gap-6 text-sm">
+                <a href="https://github.com/Chocola-X/MediaPages" target="_blank" class="hover:text-classic-gold cursor-pointer">Powered by MediaPages</a>
+            </div>
+        </div>
+    </footer>
+
+    <script src="./player/hls.js"></script>
+    <script src="./player/core.js"></script>
+    <script src="./theme.js"></script>
+</body>
+</html>

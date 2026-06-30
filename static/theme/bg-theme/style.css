@@ -1,0 +1,91 @@
+/* ════════════════════════════════════════════════
+   MediaPages bg-theme — classic anime skin
+   ════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght=500;900&family=Playfair+Display:ital,wght@1,700&display=swap');
+
+body {
+    font-family: 'Noto Serif SC', serif;
+}
+.font-en {
+    font-family: 'Playfair Display', serif;
+}
+
+/* 隐藏滚动条并保留滚动功能 */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+.dark ::-webkit-scrollbar-thumb {
+    background: #2c4a3e;
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb {
+    background: #dfb76c;
+    border-radius: 3px;
+}
+
+/* 避免移动端点击高亮 */
+* {
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* 立绘多栏拉伸核心骨架 */
+.hero-strip {
+    flex: 1 1 0%;
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    cursor: pointer;
+    transition: flex 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+    will-change: flex;
+}
+
+/* PC 端悬停弹性伸缩 */
+@media (min-width: 768px) {
+    #hero-strips:hover .hero-strip {
+        flex: 0.7 1 0%;
+    }
+    #hero-strips .hero-strip:hover {
+        flex: 1.9 1 0%;
+    }
+}
+
+/* 媒体隐藏辅助层 */
+.media-viewer {
+    display: none;
+}
+.placeholder {
+    display: none;
+}
+audio.media-viewer {
+    width: 60%;
+    height: 50px;
+}
+
+/* 原生视频画面缩放适配 */
+#video-viewer {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    outline: none;
+}
+
+/* 字幕轨道微调 */
+::cue {
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    font-size: 1.2rem;
+    transform: translateY(-55px);
+}
+
+@media (max-width: 768px) {
+    ::cue {
+        font-size: 1rem;
+        transform: translateY(-45px);
+    }
+}

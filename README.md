@@ -51,13 +51,13 @@ MediaPages/
 ├── config.ini               ← 用户配置
 ├── config.example.ini       ← 配置示例
 ├── static/                  ← 前端静态文件
-│   ├── index.html           ← 纯骨架 DOM，引用 player/ 和 theme/
-│   ├── favicon.png
 │   ├── player/              ← 【绝对不动产】内核，换主题也不动
 │   │   ├── hls.js           ← 第三方解码库
 │   │   └── core.js          ← MediaPlayer 类 + 数据获取（fetch index.json）
 │   └── theme/
-│       └── default/         ← 【完全可变皮囊】整个主题包
+│       └── default/         ← 【完全可变皮囊】整个自包含主题包
+│           ├── index.html   ← 纯骨架 DOM，引用 player/ 和 theme/
+│           ├── favicon.png  ← 网站图标
 │           ├── style.css    ← 全部样式
 │           └── theme.js     ← 全部 JS 交互（侧边栏、UI 行为）
 └── README.md

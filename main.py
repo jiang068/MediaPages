@@ -154,10 +154,19 @@ def main():
     if not static_dir.exists():
         print(f"[警告] 找不到 static 目录: {static_dir}，跳过静态资源复制。")
     else:
-        print(f"正在复制 {static_dir} 下的所有文件到 {dist_dir} ...")
-        # 复制 static 目录下的所有内容到 dist_dir (dirs_exist_ok=True 允许覆盖写入)
-        shutil.copytree(static_dir, dist_dir, dirs_exist_ok=True)
-        print("静态资源复制完成。")
+        print(f"正在复制 {static_dir} 下的前端文件到 {dist_dir} ...")
+        # 复制 player（绝对不动产内核）
+        shutil.copytree(static_dir / "player", dist_dir / "player", dirs_exist_ok=True)
+        # 复制所选主题的内容到 dist 根目录（默认 default，可通过 config.ini 的 [site].theme 指定）
+        # 主题目录包含 index.html、favicon.png、style.css、theme.js 等所有前端文件
+        theme_name = config.str_("site", "theme", "default")
+        theme_dir = static_dir / "theme" / theme_name
+        if not theme_dir.exists():
+            print(f"[警告] 主题 [{theme_name}] 不存在，回退 default")
+            theme_dir = static_dir / "theme" / "default"
+        print(f"  主题: {theme_name} → dist/")
+        shutil.copytree(theme_dir, dist_dir, dirs_exist_ok=True)
+        print("前端文件复制完成。")
 
         # 应用 site 配置（标题、图标）到 index.html
         apply_site_config(dist_dir, args.title)
