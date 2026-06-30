@@ -28,39 +28,48 @@
                 role: '古典部成员 · 洞察推解析',
                 motto: '能不做的事就不做，非做不可的事就从简。',
                 desc: '神山高校古典部的节能少年。拥有惊人的主观洞察力与逻辑推导天赋，尽管自身极度抗拒消耗多余的能量，但在千反田爱瑠无辜且炽热的眼神攻势下，总能将日常中看似微不足道的谜题逐一完美拆解。',
-                bgUrl: '.MediaPages\static\theme\bg-theme\assets\b1.jpg',
-                portraitUrl: '.MediaPages\static\theme\bg-theme\assets\b1.jpg'
+                bgUrl: './assets/gb1.jpg',
+                portraitUrl: './assets/b1.png'
             },
             {
                 name: '千反田 爱瑠', enName: 'Eru Chitanda',
                 role: '古典部部长 · 核心好奇心驱动',
                 motto: '我很好奇！我非常在意！',
                 desc: '富农名门千反田家的千金。外表清秀端庄，待人温柔极具教养。然而她对日常中所有不可思议的事物都有着无与伦比的探求欲，一旦陷入沉思，那双充满好奇的硕大眼眸便让任何人都无法拒绝。',
-                bgUrl: '.MediaPages\static\theme\bg-theme\assets\a1.jpg',
-                portraitUrl: '.MediaPages\static\theme\bg-theme\assets\a1.jpg'
+                bgUrl: './assets/ga1.jpg',
+                portraitUrl: './assets/a1.png'
             },
             {
                 name: '福部 里志', enName: 'Satoshi Fukube',
                 role: '古典部成员 · 随身人体数据库',
                 motto: '数据是无法得出结论的。',
-                desc: '奉太郎的挚友。随身携带各色布兜的乐天少年，涉猎面极其广泛，热衷于收集冷门杂学知识，自封为“数据库”。他深知自己无法对线索做精细推论，因此在信息和精神上全力给予奉太郎最好的声援。',
-                bgUrl: '.MediaPages\static\theme\bg-theme\assets\b2.jpg',
-                portraitUrl: '.MediaPages\static\theme\bg-theme\assets\b2.jpg'
+                desc: '奉太郎的挚友。随身携带各色布兜的乐天少年，涉猎面极其广泛，热衷于收集冷门杂学知识，自封为”数据库”。他深知自己无法对线索做精细推论，因此在信息和精神上全力给予奉太郎最好的声援。',
+                bgUrl: './assets/gb2.jpg',
+                portraitUrl: './assets/b2.png'
             },
             {
                 name: '伊原 摩耶花', enName: 'Mayaka Ibara',
                 role: '古典部成员 · 严苛图书委员',
                 motto: '对他人严厉，对自己更加严格。',
                 desc: '身材娇小但原则极强的少女。同时跨界在漫画研究社与古典部活动。虽然平日里对奉太郎慢吞吞的节能态度表现得相当毒舌和严厉，打心底看重古典部四人组之间的深厚羁绊。',
-                bgUrl: '.MediaPages\static\theme\bg-theme\assets\a2.jpg',
-                portraitUrl: '.MediaPages\static\theme\bg-theme\assets\a2.jpg'
+                bgUrl: './assets/ga2.jpg',
+                portraitUrl: './assets/a2.png'
             }
         ],
         gallery: [
-            'https://images.unsplash.com/photo-1528459801416-a9e53bbf4e17?w=500&auto=format&fit=crop',
-            'https://images.unsplash.com/photo-1542273917363-3b1817f69a2d?w=500&auto=format&fit=crop',
-            'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=500&auto=format&fit=crop',
-            'https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?w=500&auto=format&fit=crop'
+            './assets/gallery/4.jpg',
+            './assets/gallery/5.jpg',
+            './assets/gallery/6.jpg',
+            './assets/gallery/7.jpg',
+            './assets/gallery/8.jpg',
+            './assets/gallery/9.jpg',
+            './assets/gallery/10.jpg',
+            './assets/gallery/12.jpg',
+            './assets/gallery/13.jpg',
+            './assets/gallery/14.jpg',
+            './assets/gallery/15.jpg',
+            './assets/gallery/16.jpg',
+            './assets/gallery/17.jpg'
         ],
         activeCharIndex: 0
     };
@@ -127,16 +136,56 @@
     };
 
     /** 画廊渲染 */
+    /** 画廊渲染 */
     function renderGallery() {
         if (!DOM.galleryGrid) return;
+        
+        // 1. 渲染图片列表（给外层加上 cursor-zoom-in 鼠标手势提示可以点击放大）
         DOM.galleryGrid.innerHTML = THEME_DATA.gallery.map(function (url, index) {
-            return '<div class="relative aspect-[4/3] rounded-xl overflow-hidden bg-zinc-800 shadow-md group">' +
+            return '<div class="relative aspect-[4/3] rounded-xl overflow-hidden bg-zinc-800 shadow-md group cursor-zoom-in">' +
                         '<img src="' + url + '" alt="Gallery ' + index + '" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />' +
                         '<div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-3">' +
                             '<span class="text-white text-xs font-mono font-light">SCENE _0' + (index + 1) + '</span>' +
                         '</div>' +
                    '</div>';
         }).join('');
+
+        // 2. 利用事件委托，绑定点击放大事件
+        if (!DOM.galleryGrid.__hasLightboxListener) {
+            DOM.galleryGrid.__hasLightboxListener = true;
+            DOM.galleryGrid.addEventListener('click', function (e) {
+                var card = e.target.closest('.group');
+                if (!card) return;
+                var img = card.querySelector('img');
+                if (img) {
+                    openLightbox(img.src);
+                }
+            });
+        }
+    }
+
+    /** 动态全屏图片放大灯箱 */
+    function openLightbox(src) {
+        // 创建全屏遮罩层（利用 Tailwind 样式：高层级 z-[100]、暗色磨砂玻璃背景 backdrop-blur-md）
+        var overlay = document.createElement('div');
+        overlay.className = 'fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center cursor-zoom-out opacity-0 transition-opacity duration-300';
+        overlay.innerHTML = '<img src="' + src + '" class="max-w-[95%] max-h-[95%] md:max-w-[85%] md:max-h-[85%] object-contain rounded-xl shadow-2xl transform scale-95 transition-transform duration-300">';
+        
+        document.body.appendChild(overlay);
+        
+        // 触发重绘以激活淡入和放大动画
+        overlay.offsetWidth;
+        overlay.classList.remove('opacity-0');
+        overlay.querySelector('img').classList.remove('scale-95');
+        
+        // 再次点击任意地方：淡出复原并销毁 DOM
+        overlay.addEventListener('click', function () {
+            overlay.classList.add('opacity-0');
+            overlay.querySelector('img').classList.add('scale-95');
+            setTimeout(function () {
+                overlay.remove();
+            }, 300); // 300ms 动画结束后彻底移除节点
+        });
     }
 
     /** 同步后端 core.js 数据通信 */
@@ -155,7 +204,10 @@
         var total = items.length;
         var listInfo = document.querySelector('#episode-list').previousElementSibling;
         if (listInfo && listInfo.tagName === 'SPAN') {
-            listInfo.innerHTML = '<i data-lucide="list-video" class="w-4 h-4"></i> 剧集列表 (共' + total + '集)';
+            listInfo.innerHTML = '<i data-lucide="list-video" class="w-4 h-4"></i> 剧集列表 (共' + total + '集)' +
+                '<button id="episode-toggle" class="lg:hidden ml-auto cursor-pointer hover:text-classic-gold transition-colors" onclick="toggleEpisodeList()">' +
+                    '<i data-lucide="chevron-down" class="w-4 h-4"></i>' +
+                '</button>';
             if (window.lucide) window.lucide.createIcons();
         }
 
@@ -174,13 +226,17 @@
             if (!btn) return;
             var idx = parseInt(btn.dataset.index, 10);
             var item = items[idx];
-            if (item && window.__player) {
-                window.__player.play(item);
+            if (item) {
+                if (window.__player) {
+                    window.__player.play(item); // 让 core.js 核心去完整调度 HLS/普通视频的加载与播放
+                }
+                // 【完美修复】传入第二个参数 true，声明“仅更新UI”，绝不干扰核心播放器的 HLS 引擎流托管
+                updatePlayer(item, true); 
             }
         });
     }
 
-    function updatePlayer(item) {
+    function updatePlayer(item, skipMediaSrc) {
         if (DOM.videoTitle) {
             DOM.videoTitle.textContent = item ? item.name : '选择剧集开始观看';
         }
@@ -189,9 +245,17 @@
         buttons.forEach(function (el) {
             el.classList.remove('bg-classic-gold/20', 'dark:bg-classic-gold/10', 'text-classic-gold');
         });
+        
         if (item) {
             var data = window.__mediaData || [];
-            var idx = data.indexOf(item);
+            var idx = -1;
+            for (var i = 0; i < data.length; i++) {
+                if (data[i] === item || (data[i] && item && (data[i].src === item.src || data[i].name === item.name))) {
+                    idx = i;
+                    break;
+                }
+            }
+            
             if (idx !== -1) {
                 var current = DOM.episodeList.querySelector('[data-index="' + idx + '"]');
                 if (current) {
@@ -203,6 +267,18 @@
             }
         }
 
+        // 【核心隔离逻辑】如果是点击切集触发的 UI 刷新，直接在此处完成移动端收起并安全退出，不破坏 HLS 链路
+        if (skipMediaSrc) {
+            if (window.innerWidth < 1024) {
+                DOM.episodeList.classList.add('hidden');
+                var toggleIcon = document.querySelector('#episode-toggle i');
+                if (toggleIcon) toggleIcon.setAttribute('data-lucide', 'chevron-down');
+                if (window.lucide) window.lucide.createIcons();
+            }
+            return;
+        }
+
+        // 以下仅在首屏刚加载（onCoreReady）时做初始化防塌陷兜底，点击切集时不会执行
         DOM.video.style.display = 'none';
         DOM.audio.style.display = 'none';
         DOM.image.style.display = 'none';
@@ -225,16 +301,20 @@
 
         DOM.video.style.display = '';
         if (window.__player && window.__player._hls) {
-            // HLS 引擎托管
+            // HLS 引擎托管安全区
         } else {
-            DOM.video.src = item.src;
-            DOM.video.load();
+            // 只有非 HLS 的普通视频，才允许初始化 src
+            var isHls = item.src && (item.src.indexOf('.m3u8') !== -1 || item.src.toLowerCase().endsWith('.m3u8'));
+            if (!isHls) {
+                DOM.video.src = item.src;
+                DOM.video.load();
+            }
         }
 
         if (window.innerWidth < 1024) {
-            DOM.episodeList.classList.remove('hidden');
+            DOM.episodeList.classList.add('hidden');
             var toggleIcon = document.querySelector('#episode-toggle i');
-            if (toggleIcon) toggleIcon.setAttribute('data-lucide', 'chevron-up');
+            if (toggleIcon) toggleIcon.setAttribute('data-lucide', 'chevron-down');
             if (window.lucide) window.lucide.createIcons();
         }
     }
