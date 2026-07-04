@@ -77,6 +77,7 @@ MediaPages/
 ```ini
 [video]
 mode = copy    ; copy = 原画流复制 | encode = H.264 重编码
+size_priority_mode = false  ; true=切片大小优先（目标切片大小由 video.size_priority_target 决定）
 
 [auth]
 enabled = false  ; 启用密码鉴权
@@ -89,6 +90,28 @@ upload_threshold_mb = 512
 ```
 
 完整配置说明见 `config.example.ini`。
+
+## 切片大小优先模式
+
+默认 HLS 切片按固定时长（`hls_time=6` 秒）切割，每个 `.ts` 文件大小取决于视频码率。码率低的视频会产生很小的切片，上传到 Cloudflare Pages 时数量多、效率低。
+
+启用 `size_priority_mode = true` 后，程序会**自动计算切片时长**，使每个切片大小尽可能接近目标值（由 `size_priority_target` 控制），从而减少切片数量：
+
+| 视频模式 | 计算方法 |
+|---------|---------|
+| `mode=copy`（复制） | ffprobe 探测源文件码率 → `hls_time = target_size / (bitrate/8)` |
+| `mode=encode`（编码） | 直接用配置中的 `bitrate`（如 `18M`）计算 |
+
+配置示例：
+
+```ini
+[video]
+mode = copy
+size_priority_mode = true
+size_priority_target = 24641536   ; 目标切片大小 23.5MB，默认与 [audio].safe_target_bytes 相同
+```
+
+目标大小不要超过 `[media].max_file_size`（25MB），否则部署到 Cloudflare Pages 时会超限。
 
 ## 独立模块
 

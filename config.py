@@ -59,6 +59,59 @@ def list_(section, key, fallback=None):
     return [x.strip() for x in raw.split(",") if x.strip()]
 
 
+# ── 切片大小优先模式 ─────────────────────────────────────────────
+
+
+def size_priority_enabled():
+    """检查是否启用了切片大小优先模式。"""
+    return bool_("video", "size_priority_mode", False)
+
+
+def get_video_bitrate_kbps(input_path):
+    """通过 ffprobe 探测视频流码率 (kbps)。"""
+    import subprocess
+    cmd = [
+        'ffprobe', '-v', 'error', '-select_streams', 'v:0',
+        '-show_entries', 'stream=bit_rate',
+        '-of', 'default=noprint_wrappers=1:nokey=1', input_path
+    ]
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if result.returncode == 0:
+        bitrate_str = result.stdout.strip()
+        if bitrate_str and bitrate_str != 'N/A':
+            return int(bitrate_str) // 1000
+    return 0
+
+
+def _parse_bitrate_kbps(bitrate_str):
+    """解析码率字符串如 '18M'、'320k' 为 kbps。"""
+    if not bitrate_str:
+        return 0
+    s = str(bitrate_str).strip().upper()
+    if s.endswith('M'):
+        return int(float(s[:-1]) * 1000)
+    elif s.endswith('K'):
+        return int(float(s[:-1]))
+    elif s.endswith('BPS'):
+        return int(s[:-3]) // 1000
+    return int(s) // 1000 if s.isdigit() else 0
+
+
+def size_priority_target_bytes():
+    """读取切片大小优先模式的目标大小（字节），默认 23.5MB。"""
+    return int_("video", "size_priority_target", int_("audio", "safe_target_bytes", 24641536))
+
+
+def calc_size_priority_hls_time(video_bitrate_kbps, audio_bitrate_kbps=0):
+    """根据目标切片大小计算 hls_time（秒），上限 30 秒防止超长切片。"""
+    target_size = size_priority_target_bytes()
+    total_bitrate = video_bitrate_kbps + audio_bitrate_kbps
+    if total_bitrate <= 0:
+        return None
+    hls_time = target_size / (total_bitrate * 1000 / 8)
+    return max(1, min(30, int(hls_time)))
+
+
 # ── FFmpeg 命令构建 ──────────────────────────────────────────────
 
 
@@ -70,7 +123,7 @@ def _populate(cmd, mapping):
         cmd.extend([key, str(val)])
 
 
-def build_hls_hw_cmd(input_path, output_playlist, hls_segments):
+def build_hls_hw_cmd(input_path, output_playlist, hls_segments, hls_time_override=None):
     """构建 HLS 硬件编码 ffmpeg 命令。"""
     s = "video.hw"
     cmd = ["ffmpeg", "-y"]
@@ -82,6 +135,7 @@ def build_hls_hw_cmd(input_path, output_playlist, hls_segments):
             cmd += ["-hwaccel_output_format", hwfmt]
     cmd += ["-i", input_path,
             "-map", "0:v:0", "-map", "0:a:0"]
+    hls_time = hls_time_override if hls_time_override is not None else str_(s, "hls_time")
     _populate(cmd, [
         ("-vf", str_(s, "filter")),
         ("-c:v", str_(s, "codec")),
@@ -97,7 +151,7 @@ def build_hls_hw_cmd(input_path, output_playlist, hls_segments):
         ("-sc_threshold", str_(s, "sc_threshold")),
         ("-c:a", str_(s, "audio_codec")),
         ("-b:a", str_(s, "audio_bitrate")),
-        ("-hls_time", str_(s, "hls_time")),
+        ("-hls_time", hls_time),
         ("-hls_playlist_type", str_(s, "hls_playlist_type")),
         ("-hls_segment_filename", hls_segments),
     ])
@@ -105,11 +159,12 @@ def build_hls_hw_cmd(input_path, output_playlist, hls_segments):
     return cmd
 
 
-def build_hls_sw_cmd(input_path, output_playlist, hls_segments):
+def build_hls_sw_cmd(input_path, output_playlist, hls_segments, hls_time_override=None):
     """构建 HLS 软件编码 ffmpeg 命令（回退方案）。"""
     s = "video.sw"
     cmd = ["ffmpeg", "-y", "-i", input_path,
            "-map", "0:v:0", "-map", "0:a:0"]
+    hls_time = hls_time_override if hls_time_override is not None else str_(s, "hls_time")
     _populate(cmd, [
         ("-vf", str_(s, "filter")),
         ("-c:v", str_(s, "codec")),
@@ -120,7 +175,7 @@ def build_hls_sw_cmd(input_path, output_playlist, hls_segments):
         ("-sc_threshold", str_(s, "sc_threshold")),
         ("-c:a", str_(s, "audio_codec")),
         ("-b:a", str_(s, "audio_bitrate")),
-        ("-hls_time", str_(s, "hls_time")),
+        ("-hls_time", hls_time),
         ("-hls_playlist_type", str_(s, "hls_playlist_type")),
         ("-hls_segment_filename", hls_segments),
     ])
@@ -171,13 +226,14 @@ def build_mp4_sw_cmd(input_path, target_output):
     return cmd
 
 
-def build_hls_copy_cmd(input_path, output_playlist, hls_segments):
+def build_hls_copy_cmd(input_path, output_playlist, hls_segments, hls_time_override=None):
     """构建 HLS 复制模式 ffmpeg 命令（不重新编码，直接切片）。"""
+    hls_time = str(hls_time_override) if hls_time_override is not None else str_("video.hw", "hls_time", "3")
     cmd = ["ffmpeg", "-y", "-i", input_path,
            "-map", "0:v:0", "-map", "0:a:0",
            "-c:v", "copy",
            "-c:a", str_("video", "audio_copy_codec", "copy"),
-           "-hls_time", str_("video.hw", "hls_time", "3"),
+           "-hls_time", hls_time,
            "-hls_playlist_type", str_("video.hw", "hls_playlist_type", "vod"),
            "-hls_segment_filename", hls_segments,
            output_playlist]

@@ -185,9 +185,26 @@ def compress_video(input_path, output_dir):
     output_playlist = os.path.join(video_folder, f"{base_name}-0.m3u8")
     hls_segments = os.path.join(video_folder, "chunk_%04d.ts")
 
+    # 切片大小优先模式：计算最优 hls_time
+    hls_time_override = None
+    if config.size_priority_enabled():
+        is_copy = config.str_("video", "mode", "encode") == "copy"
+        if is_copy:
+            v_bitrate = config.get_video_bitrate_kbps(input_path)
+            a_bitrate = 0
+        else:
+            mode_section = "video.hw"
+            v_bitrate = config._parse_bitrate_kbps(config.str_(mode_section, "bitrate", ""))
+            if v_bitrate <= 0:
+                v_bitrate = config.get_video_bitrate_kbps(input_path)
+            a_bitrate = config._parse_bitrate_kbps(config.str_(mode_section, "audio_bitrate", ""))
+        hls_time_override = config.calc_size_priority_hls_time(v_bitrate, a_bitrate)
+        if hls_time_override:
+            logging.info(f"Size priority mode: calculated hls_time={hls_time_override}s for bitrate={v_bitrate}+{a_bitrate}kbps")
+
     # 复制模式：不重新编码，直接切片，保留原始画质
     if config.str_("video", "mode", "encode") == "copy":
-        cmd = config.build_hls_copy_cmd(input_path, output_playlist, hls_segments)
+        cmd = config.build_hls_copy_cmd(input_path, output_playlist, hls_segments, hls_time_override)
         try:
             subprocess.run(cmd, check=True, stderr=subprocess.DEVNULL)
         except Exception as e:
@@ -195,12 +212,12 @@ def compress_video(input_path, output_dir):
             raise
     else:
         # 编码模式（默认）：硬件 + 软件回退
-        hw_cmd = config.build_hls_hw_cmd(input_path, output_playlist, hls_segments)
+        hw_cmd = config.build_hls_hw_cmd(input_path, output_playlist, hls_segments, hls_time_override)
         try:
             subprocess.run(hw_cmd, check=True, stderr=subprocess.DEVNULL)
         except Exception as e:
             logging.warning(f"CUDA failed, falling back to CPU for {base_name}. Error: {e}")
-            sw_cmd = config.build_hls_sw_cmd(input_path, output_playlist, hls_segments)
+            sw_cmd = config.build_hls_sw_cmd(input_path, output_playlist, hls_segments, hls_time_override)
             subprocess.run(sw_cmd, check=True, stderr=subprocess.DEVNULL)
 
     # 智能字幕处理
