@@ -94,6 +94,12 @@ def compress_image(input_path, output_path):
 
 def compress_audio(input_path, output_path):
     logging.info(f"Starting precise audio compression: {input_path}")
+
+    # 复制模式：直接复制，不重新编码
+    if config.str_("audio", "mode", "encode") == "copy":
+        logging.info(f"Audio copy mode: directly copying {input_path}")
+        shutil.copy2(input_path, output_path)
+        return
     temp_output = output_path + '.tmp'
     safe_target = config.int_("audio", "safe_target_bytes", 24641536)  # 23.5 * MB
     bitrate_max = config.int_("audio", "bitrate_max", 320)
@@ -372,8 +378,10 @@ def main():
                 else: compress_image(input_path, output_path)
 
             elif ext in AUDIO_EXTENSIONS:
-                if file_size <= MAX_SIZE: shutil.copy2(input_path, output_path)
-                else: compress_audio(input_path, output_path)
+                if config.str_("audio", "mode", "encode") == "copy" or file_size <= MAX_SIZE:
+                    shutil.copy2(input_path, output_path)
+                else:
+                    compress_audio(input_path, output_path)
 
             elif ext in VIDEO_EXTENSIONS:
                 # 无论 MKV 还是 MP4，大于 MAX_SIZE 都进行 HLS 高性能切片
