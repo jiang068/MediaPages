@@ -1,0 +1,5 @@
+ArtPlayer.js 5.4.0
+Source: https://github.com/zhw2590582/ArtPlayer
+Package: https://www.npmjs.com/package/artplayer/v/5.4.0
+License: MIT (Harvey Zhao)
+Integrity: sha512-2B+plbx8N2yNs[...]ifqLuPxZOH29A==

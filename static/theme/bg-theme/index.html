@@ -175,6 +175,7 @@
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 bg-zinc-200/50 dark:bg-zinc-900/50 p-3 sm:p-4 rounded-2xl backdrop-blur-md shadow-inner">
             <div class="lg:col-span-3 flex flex-col justify-between">
                 <div class="relative w-full aspect-video bg-black rounded-xl overflow-hidden shadow-2xl group">
+                    <div id="artplayer-container" class="absolute inset-0 z-20 hidden"></div>
                     <video id="video-viewer" class="w-full h-full object-contain" controls playsinline webkit-playsinline x5-playsinline preload="metadata"></video>
                     <audio id="audio-viewer" class="media-viewer" controls style="display:none"></audio>
                     <img id="image-viewer" class="media-viewer" alt="图片预览" style="display:none">
@@ -215,7 +216,8 @@
     </footer>
 
     <script src="./player/hls.js"></script>
-    <script src="./player/core.js"></script>
+    <script src="./player/artplayer/artplayer.js" defer></script>
+    <script src="./player/core.js" defer></script>
     <script src="./theme.js"></script>
 </body>
 </html>

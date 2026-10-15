@@ -6,7 +6,15 @@ _CONFIG_PATH = None
 
 
 def _find_config():
-    """查找配置，优先使用 config.ini，不存在则用 config.example.ini。"""
+    """查找配置。
+
+    优先级：环境变量 MEDIAPAGES_CONFIG > 项目内 config.ini > config.example.ini。
+    环境变量便于测试和在同一份代码上跑多套媒体库配置。
+    """
+    import os
+    override = os.environ.get("MEDIAPAGES_CONFIG")
+    if override:
+        return Path(override)
     script_dir = Path(__file__).parent
     for name in ["config.ini", "config.example.ini"]:
         path = script_dir / name
@@ -21,7 +29,7 @@ def load(path=None):
         _CONFIG_PATH = Path(path)
     else:
         _CONFIG_PATH = _find_config()
-    _config = configparser.ConfigParser()
+    _config = configparser.ConfigParser(interpolation=None)
     _config.read(_CONFIG_PATH, encoding="utf-8")
     return _config
 
@@ -97,6 +105,67 @@ def _parse_bitrate_kbps(bitrate_str):
     return int(s) // 1000 if s.isdigit() else 0
 
 
+def static_range_enabled():
+    """是否为无法/不适合 HLS 的视频启用静态 Range 流发布。"""
+    return bool_("video", "static_range_mode", False)
+
+
+def static_range_extensions():
+    """启用静态 Range 流的容器后缀，默认保留原始 MKV。"""
+    return [ext.lower() if ext.startswith(".") else "." + ext.lower()
+            for ext in list_("video", "static_range_extensions", [".mkv"])]
+
+
+def static_range_part_bytes():
+    """静态 Range 分块大小，默认 24 MiB。"""
+    return int_("video", "static_range_part_bytes", 24 * 1024 * 1024)
+
+
+def static_range_url_prefix():
+    """静态分块的公开 URL 前缀。"""
+    import re
+    value = str_("video", "static_range_url_prefix", "/stream").strip().rstrip("/") or "/stream"
+    if not re.fullmatch(r"/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+", value):
+        raise ValueError("static_range_url_prefix must be an absolute URL path, e.g. /stream or /media-stream/files")
+    return value
+
+
+def hevc_repartition_enabled():
+    """高码率 HEVC 是否使用 moof/mdat 边界重新分配切片。"""
+    return bool_("video", "hevc_repartition", True)
+
+
+def hevc_fragment_bytes():
+    """重新分配 HEVC 切片时的上游 fragment 尺寸。"""
+    return int_("video", "hevc_fragment_bytes", 18 * 1024 * 1024)
+
+
+def max_segment_bytes():
+    """单个切片允许的最大字节数，默认沿用 media.max_file_size。"""
+    return int_("video", "max_segment_bytes", int_("media", "max_file_size", 25165824))
+
+
+def hls_segment_type():
+    """返回 HLS 切片容器：mpegts（默认）或 fmp4。"""
+    value = str_("video", "hls_segment_type", "mpegts").strip().lower()
+    return "fmp4" if value in ("fmp4", "mp4", "cmaf") else "mpegts"
+
+
+def fmp4_filename_pattern():
+    """fMP4 媒体切片文件名模板。"""
+    return str_("video", "fmp4_segment_pattern", "segment_%05d.m4s")
+
+
+def fmp4_init_filename():
+    """fMP4 初始化片段文件名。"""
+    return str_("video", "fmp4_init_filename", "init.mp4")
+
+
+def write_master_playlist():
+    """是否为 fMP4 输出生成 master.m3u8。"""
+    return bool_("video", "write_master_playlist", True)
+
+
 def size_priority_target_bytes():
     """读取切片大小优先模式的目标大小（字节），默认 23.5MB。"""
     return int_("video", "size_priority_target", int_("audio", "safe_target_bytes", 24641536))
@@ -113,6 +182,14 @@ def calc_size_priority_hls_time(video_bitrate_kbps, audio_bitrate_kbps=0):
 
 
 # ── FFmpeg 命令构建 ──────────────────────────────────────────────
+
+
+def _hls_segment_type_value():
+    return "fmp4" if hls_segment_type() == "fmp4" else "mpegts"
+
+
+def _hls_fmp4_init_value():
+    return fmp4_init_filename() if hls_segment_type() == "fmp4" else None
 
 
 def _populate(cmd, mapping):
@@ -134,7 +211,7 @@ def build_hls_hw_cmd(input_path, output_playlist, hls_segments, hls_time_overrid
         if hwfmt:
             cmd += ["-hwaccel_output_format", hwfmt]
     cmd += ["-i", input_path,
-            "-map", "0:v:0", "-map", "0:a:0"]
+            "-map", "0:v:0", "-map", "0:a:0?"]
     hls_time = hls_time_override if hls_time_override is not None else str_(s, "hls_time")
     _populate(cmd, [
         ("-vf", str_(s, "filter")),
@@ -153,6 +230,8 @@ def build_hls_hw_cmd(input_path, output_playlist, hls_segments, hls_time_overrid
         ("-b:a", str_(s, "audio_bitrate")),
         ("-hls_time", hls_time),
         ("-hls_playlist_type", str_(s, "hls_playlist_type")),
+        ("-hls_segment_type", _hls_segment_type_value()),
+        ("-hls_fmp4_init_filename", _hls_fmp4_init_value()),
         ("-hls_segment_filename", hls_segments),
     ])
     cmd.append(output_playlist)
@@ -163,7 +242,7 @@ def build_hls_sw_cmd(input_path, output_playlist, hls_segments, hls_time_overrid
     """构建 HLS 软件编码 ffmpeg 命令（回退方案）。"""
     s = "video.sw"
     cmd = ["ffmpeg", "-y", "-i", input_path,
-           "-map", "0:v:0", "-map", "0:a:0"]
+           "-map", "0:v:0", "-map", "0:a:0?"]
     hls_time = hls_time_override if hls_time_override is not None else str_(s, "hls_time")
     _populate(cmd, [
         ("-vf", str_(s, "filter")),
@@ -177,6 +256,8 @@ def build_hls_sw_cmd(input_path, output_playlist, hls_segments, hls_time_overrid
         ("-b:a", str_(s, "audio_bitrate")),
         ("-hls_time", hls_time),
         ("-hls_playlist_type", str_(s, "hls_playlist_type")),
+        ("-hls_segment_type", _hls_segment_type_value()),
+        ("-hls_fmp4_init_filename", _hls_fmp4_init_value()),
         ("-hls_segment_filename", hls_segments),
     ])
     cmd.append(output_playlist)
@@ -230,13 +311,17 @@ def build_hls_copy_cmd(input_path, output_playlist, hls_segments, hls_time_overr
     """构建 HLS 复制模式 ffmpeg 命令（不重新编码，直接切片）。"""
     hls_time = str(hls_time_override) if hls_time_override is not None else str_("video.hw", "hls_time", "3")
     cmd = ["ffmpeg", "-y", "-i", input_path,
-           "-map", "0:v:0", "-map", "0:a:0",
+           "-map", "0:v:0", "-map", "0:a:0?",
            "-c:v", "copy",
            "-c:a", str_("video", "audio_copy_codec", "copy"),
            "-hls_time", hls_time,
-           "-hls_playlist_type", str_("video.hw", "hls_playlist_type", "vod"),
-           "-hls_segment_filename", hls_segments,
-           output_playlist]
+           "-hls_playlist_type", str_("video.hw", "hls_playlist_type", "vod")]
+    if hls_segment_type() == "fmp4":
+        cmd += ["-hls_segment_type", "fmp4",
+                "-hls_fmp4_init_filename", fmp4_init_filename()]
+    if str_("video", "audio_copy_codec", "copy") != "copy":
+        cmd += ["-b:a", str_("video", "audio_copy_bitrate", "128k")]
+    cmd += ["-hls_segment_filename", hls_segments, output_playlist]
     return cmd
 
 
@@ -273,16 +358,27 @@ def get_subtitle_lang_map():
     return lang_map
 
 
-def generate_headers(dist_path):
-    """在 dist 目录下生成 Cloudflare Pages _headers 文件。"""
+def generate_headers(dist_path, theme_headers=None):
+    """Merge the selected theme's headers with configured CORS on every build.
+
+    Read the source fragment, not an earlier generated dist/_headers, so rebuilds
+    and switching themes cannot accumulate stale or duplicate rules.
+    """
+    dist_path = Path(dist_path)
+    blocks = []
+    if theme_headers and Path(theme_headers).is_file():
+        fragment = Path(theme_headers).read_text(encoding="utf-8").strip()
+        if fragment:
+            blocks.append(fragment)
     allow_origin = str_("cors", "allow_origin")
-    allow_methods = str_("cors", "allow_methods", "GET, HEAD, OPTIONS")
-    if not allow_origin:
-        return
-    lines = [
-        "/*",
-        f"  Access-Control-Allow-Origin: {allow_origin}",
-        f"  Access-Control-Allow-Methods: {allow_methods}",
-    ]
-    header_path = dist_path / "_headers"
-    header_path.write_text("\n".join(lines), encoding="utf-8")
+    if allow_origin:
+        blocks.append("\n".join([
+            "/*",
+            f"  Access-Control-Allow-Origin: {allow_origin}",
+            f"  Access-Control-Allow-Methods: {str_('cors', 'allow_methods', 'GET, HEAD, OPTIONS')}",
+        ]))
+    target = dist_path / "_headers"
+    if blocks:
+        target.write_text("\n\n".join(blocks) + "\n", encoding="utf-8")
+    else:
+        target.unlink(missing_ok=True)

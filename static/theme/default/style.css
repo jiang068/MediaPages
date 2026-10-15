@@ -96,6 +96,14 @@ html, body {
 .media-viewer { width: 100%; height: 100%; display: none; object-fit: contain; outline: none; }
 audio.media-viewer { width: 60%; height: 50px; }
 
+/* ── ArtPlayer engine (optional) ── */
+.artplayer-container {
+  width: 100%; height: 100%;
+  display: flex; justify-content: center; align-items: center;
+}
+.artplayer-container[hidden] { display: none; }
+.artplayer-container .art-video-player { width: 100%; height: 100%; }
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
   ::cue {

@@ -194,7 +194,7 @@
         if (data.length > 0) {
             renderEpisodes(data);
             if (window.__player) {
-                updatePlayer(window.__player._currentItem || data[0]);
+                updatePlayer(window.__player.currentItem || window.__player._currentItem || data[0]);
             }
         }
     }
@@ -300,15 +300,10 @@
         }
 
         DOM.video.style.display = '';
-        if (window.__player && window.__player._hls) {
-            // HLS 引擎托管安全区
-        } else {
-            // 只有非 HLS 的普通视频，才允许初始化 src
-            var isHls = item.src && (item.src.indexOf('.m3u8') !== -1 || item.src.toLowerCase().endsWith('.m3u8'));
-            if (!isHls) {
-                DOM.video.src = item.src;
-                DOM.video.load();
-            }
+        // 播放内核（ArtPlayer 或 hls.js/native）负责真正的媒体加载。
+        // 主题只负责 UI 可见性，不再直接设置 video.src，避免与内核抢占同一元素。
+        if (window.MediaPages && window.MediaPages.player) {
+            DOM.video.dataset.transport = window.MediaPages.player.engineName || 'core';
         }
 
         if (window.innerWidth < 1024) {

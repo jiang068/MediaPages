@@ -1,12 +1,24 @@
-# 本地配置（用户自行修改，不上传）
-config.ini
+# Local configuration and credentials
+/config.ini
+.env
+.env.*
+!.env.example
+!.env.*.example
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
 
-# MediaPages 项目文件
-workspace/
-workdir/
-dist/
+# Build output and local Cloudflare Pages state
+/workspace/
+/workdir/
+/dist/
+/.pages/
+/.wrangler/
 
-# Python
+# Python environments, caches, and build artifacts
+.venv/
+venv/
+env/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -14,22 +26,40 @@ __pycache__/
 *.egg
 .eggs/
 *.so
-*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage*
+htmlcov/
 
-# 环境 / 配置
-.env
-.env.local
+# Node.js dependencies and logs
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Local-only assets and acceptance material (never publish)
+/static/theme/artplayer/vendor/fonts/
+/static/theme/artplayer/ass-config.local.js
+/LOCAL-VALIDATION.md
+/tests/
+/coverage/
+/test-results/
+/playwright-report/
+
+# Local tools and editor settings
+.claude/
 .vscode/
 .idea/
 
-# OS
+# Operating system and editor files
 .DS_Store
 Thumbs.db
+Desktop.ini
 *.swp
 *~
 
-# 日志
+# Local logs and scratch directories
 *.log
-
-# wrangler
-.wrangler/
+/tmp/
+/temp/

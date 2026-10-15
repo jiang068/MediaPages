@@ -45,17 +45,38 @@ def move_files_with_structure(file_list, source_base: Path, dest_base: Path):
     print(f"  -> 文件移动操作完成。")
 
 
-def run_bash_command(cmd):
-    """执行 Bash 命令并返回是否成功"""
+def run_bash_command(cmd, cwd=None):
+    """执行 Bash 命令并返回是否成功。
+
+    ``cwd`` 用于把 wrangler 的工作目录固定在项目根：wrangler pages deploy
+    只从“当前工作目录”下的 functions/ 编译 Pages Functions，若在 dist 内执行，
+    dist/functions 既不会被编译，还会被当作公开静态资源泄漏源码。
+    """
     print(f"\n[执行命令] {cmd}")
     print("  -> 命令开始执行...")
     try:
-        result = subprocess.run(cmd, shell=True, check=True, text=True)
+        result = subprocess.run(cmd, shell=True, check=True, text=True, cwd=cwd)
         print("  -> 命令执行完毕。")
         return True
     except subprocess.CalledProcessError as e:
         print(f"[命令失败]: {e}")
         return False
+
+
+def _deploy_cwd(target_dir):
+    """wrangler pages deploy / dev 的工作目录。
+
+    wrangler 源码：``functionsDirectory = path.join(process.cwd(), "functions")``，
+    而静态资源与 ``_routes.json`` 取自传入的部署目录（dist）。因此工作目录是
+    dist 的兄弟目录 ``<workspace>/.pages``（main.py 已在那里准备好 functions/）。
+    """
+    pages_root = Path(target_dir).resolve().parent / ".pages"
+    if pages_root.is_dir():
+        return str(pages_root)
+    fallback = Path(target_dir).resolve().parent
+    if (fallback / "functions").exists():
+        return str(fallback)
+    return None
 
 
 def run_deploy(target_dir, cache_dir, bash_cmd, threshold, resume=False, incremental=False):
@@ -71,7 +92,7 @@ def run_deploy(target_dir, cache_dir, bash_cmd, threshold, resume=False, increme
     if incremental:
         # 增量模式：直接部署，不再搬运切分。wrangler 会自动跳过已上传的未变更文件。
         print("--- 增量模式：直接部署，依赖 wrangler 自动跳过已上传的文件 ---")
-        success = run_bash_command(bash_cmd)
+        success = run_bash_command(bash_cmd, cwd=_deploy_cwd(target_dir))
         if not success:
             print("[错误] 部署命令执行失败。")
             return
@@ -81,7 +102,7 @@ def run_deploy(target_dir, cache_dir, bash_cmd, threshold, resume=False, increme
     if resume:
         # 断点续传模式：直接对目标文件夹当前的内容重试部署，跳过清空阶段
         print("--- 恢复模式：尝试重新部署当前目标目录中的文件 ---")
-        success = run_bash_command(bash_cmd)
+        success = run_bash_command(bash_cmd, cwd=_deploy_cwd(target_dir))
         if not success:
             print("[错误] 恢复模式下部署重试失败，程序终止。请检查网络或重新运行。")
             return
@@ -114,14 +135,14 @@ def run_deploy(target_dir, cache_dir, bash_cmd, threshold, resume=False, increme
 
             # 执行第一次命令
             print("\n[步骤] 执行首次部署命令...")
-            success = run_bash_command(bash_cmd)
+            success = run_bash_command(bash_cmd, cwd=_deploy_cwd(target_dir))
             if not success:
                 print("[错误] 首次命令执行失败，程序终止。")
                 return
         else:
             print("初始大小已满足阈值要求，无需搬运。")
             print("\n[步骤] 执行初始部署命令...")
-            success = run_bash_command(bash_cmd)
+            success = run_bash_command(bash_cmd, cwd=_deploy_cwd(target_dir))
             if not success:
                 print("[错误] 初始命令执行失败，程序终止。")
                 return
@@ -158,7 +179,7 @@ def run_deploy(target_dir, cache_dir, bash_cmd, threshold, resume=False, increme
 
         # 执行命令
         print(f"  -> 执行部署命令...")
-        success = run_bash_command(bash_cmd)
+        success = run_bash_command(bash_cmd, cwd=_deploy_cwd(target_dir))
         if not success:
             print("[错误] 命令执行失败，程序终止。如果是因为网络波动，可以加上 -r 参数重新运行来续传。")
             return
@@ -166,7 +187,7 @@ def run_deploy(target_dir, cache_dir, bash_cmd, threshold, resume=False, increme
     # 第三阶段：当缓存为空时，执行最终命令
     print("\n--- 阶段三：完成任务 ---")
     print("\n[最终步骤] 执行最终部署命令，此时所有文件都已回到目标目录。")
-    success = run_bash_command(bash_cmd)
+    success = run_bash_command(bash_cmd, cwd=_deploy_cwd(target_dir))
     if not success:
         print("[错误] 最终命令执行失败。")
         return
@@ -200,7 +221,7 @@ def main():
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     # 动态拼接 wrangler 部署命令
-    bash_cmd = f"npx wrangler pages deploy {target_dir} --project-name {args.project}"
+    bash_cmd = f'npx wrangler pages deploy "{target_dir}" --project-name "{args.project}"'
     threshold_bytes = args.threshold * 1024 * 1024
 
     print(f"--- 启动独立部署脚本 ---")

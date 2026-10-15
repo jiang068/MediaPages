@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediaPages · ArtPlayer</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+    <div id="topbar-home">
+      <header id="player-topbar" class="topbar">
+        <button id="menu-toggle-btn" class="menu-toggle-btn" aria-expanded="false" aria-controls="sidebar">☰ 媒体库</button>
+        <span id="now-playing" class="now-playing" role="status">请选择媒体</span>
+      </header>
+    </div>
+
+    <aside id="sidebar" class="sidebar" aria-label="媒体库">
+        <div class="sidebar-heading"><span class="sidebar-header" id="sidebar-header">媒体资产库</span><button id="library-close" aria-label="关闭媒体库">✕</button></div>
+        <div class="tree-container" id="file-tree"></div>
+    </aside>
+
+    <main class="main-content">
+        <div id="artplayer-container" class="artplayer-container" hidden></div>
+        <video id="video-viewer" class="media-viewer" controls playsinline hidden></video>
+        <audio id="audio-viewer" class="media-viewer" controls hidden></audio>
+        <img id="image-viewer" class="media-viewer" alt="图片预览" hidden>
+        <div class="placeholder" id="placeholder">请在左侧选择文件进行预览</div>
+        <div id="subtitle-layer" class="subtitle-layer" hidden></div>
+    </main>
+
+    <script src="./player/hls.js"></script>
+    <script src="./player/artplayer/artplayer.js"></script>
+    <script src="./player/core.js"></script>
+    <script src="./player/ass.js"></script>
+    <script src="./ass-config.js"></script>
+    <script>
+      (function () {
+        const asset = path => new URL(path, document.baseURI).href;
+        const loadScript = src => new Promise(resolve => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = resolve;
+          document.head.appendChild(script);
+        });
+        const localConfig = asset('./ass-config.local.js');
+        fetch(localConfig, { method: 'HEAD', cache: 'no-store' })
+          .then(response => response.ok ? loadScript(localConfig) : undefined)
+          .catch(() => undefined)
+          .then(() => loadScript(asset('./theme.js')));
+      })();
+    </script>
+</body>
+</html>
